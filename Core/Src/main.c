@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <string.h>
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app_main.h"
@@ -167,18 +168,19 @@ static void EarlyLed_ClockFlash(void)
   EarlyLed_Set(GPIO_PIN_4, 0U);
 }
 
-static void EarlyLed_ClockResultFlash(uint32_t hsi_fallback)
+static void EarlyLed_ClockResultHold(uint32_t hsi_fallback)
 {
-  uint16_t pin = (hsi_fallback != 0U) ? GPIO_PIN_3 : GPIO_PIN_4;
+  uint16_t on_pin = (hsi_fallback != 0U) ? GPIO_PIN_3 : GPIO_PIN_4;
+  uint16_t off_pin = (hsi_fallback != 0U) ? GPIO_PIN_4 : GPIO_PIN_3;
 
   EarlyDelay(1200000U);
-  for (uint32_t i = 0U; i < 5U; i++)
+  EarlyLed_Set(on_pin, 1U);
+  EarlyLed_Set(off_pin, 0U);
+  for (uint32_t i = 0U; i < 8U; i++)
   {
-    EarlyLed_Set(pin, 1U);
-    EarlyDelay(700000U);
-    EarlyLed_Set(pin, 0U);
-    EarlyDelay(700000U);
+    EarlyDelay(1000000U);
   }
+  EarlyLed_Set(on_pin, 0U);
   EarlyDelay(1200000U);
 }
 
@@ -208,6 +210,47 @@ static void EarlyLed_ErrorCode(uint32_t code)
     EarlyLed_Set(GPIO_PIN_3, 0U);
     EarlyDelay(700000U);
   }
+}
+
+static uint32_t StackOverflowStageFromName(const char *name)
+{
+  if (name == NULL)
+  {
+    return 31U;
+  }
+  if (strcmp(name, "defaultTask") == 0)
+  {
+    return 61U;
+  }
+  if (strcmp(name, "stabilize") == 0)
+  {
+    return 62U;
+  }
+  if (strcmp(name, "crsf") == 0)
+  {
+    return 63U;
+  }
+  if (strcmp(name, "safety") == 0)
+  {
+    return 64U;
+  }
+  if (strcmp(name, "baro") == 0)
+  {
+    return 65U;
+  }
+  if (strcmp(name, "battery") == 0)
+  {
+    return 66U;
+  }
+  if (strcmp(name, "telem") == 0)
+  {
+    return 67U;
+  }
+  if (strcmp(name, "cli") == 0)
+  {
+    return 68U;
+  }
+  return 31U;
 }
 
 /* USER CODE END 0 */
@@ -244,7 +287,7 @@ int main(void)
   /* USER CODE BEGIN SysInit */
   EarlyLed_InitBare();
   EarlyLed_ClockFlash();
-  EarlyLed_ClockResultFlash(s_clock_hsi_fallback);
+  EarlyLed_ClockResultHold(s_clock_hsi_fallback);
   EarlyUart1_InitBare();
   if (s_clock_hsi_fallback != 0U)
   {
@@ -301,7 +344,7 @@ int main(void)
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
   s_boot_stage = 11U;
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 384);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 512);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -752,8 +795,7 @@ void vApplicationMallocFailedHook(void)
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 {
   (void)xTask;
-  (void)pcTaskName;
-  s_boot_stage = 31U;
+  s_boot_stage = StackOverflowStageFromName(pcTaskName);
   taskDISABLE_INTERRUPTS();
   EarlyLed_InitBare();
   for (;;)
