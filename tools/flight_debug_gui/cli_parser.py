@@ -23,6 +23,7 @@ class FlightCliParser:
             "imu": {},
             "attitude": {},
             "baro": {},
+            "althold": {},
             "rc": {},
             "rcmap": {
                 "order": "AETR",
@@ -73,6 +74,10 @@ class FlightCliParser:
             self._parse_uptime(text)
             self._add_snapshot()
             return
+        if text.startswith("althold "):
+            self._parse_althold(text)
+            self._add_snapshot()
+            return
         if text.startswith("i2c:"):
             self._parse_i2c(text)
             return
@@ -86,6 +91,10 @@ class FlightCliParser:
             return
         if text.startswith("baro ok="):
             self._parse_baro(text)
+            self._add_snapshot()
+            return
+        if text.startswith("baro hold "):
+            self._parse_baro_hold(text)
             self._add_snapshot()
             return
         if text.startswith("rc connected="):
@@ -120,6 +129,10 @@ class FlightCliParser:
             self._parse_telemetry_attitude(text)
             self._add_snapshot()
             return
+        if text.startswith("control alt "):
+            self._parse_control_alt(text)
+            self._add_snapshot()
+            return
         if text.startswith("mot "):
             self._parse_motors(text)
             return
@@ -149,7 +162,7 @@ class FlightCliParser:
     def _parse_status(self, text: str) -> None:
         m = re.search(
             rf"armed=(\d+) failsafe=(\d+) rc=(\d+) imu=(\d+) baro=(\d+) "
-            rf"mode angle=(\d+) baro=(\d+)",
+            rf"mode angle=(\d+) baro=(\d+)(?: air=(\d+) crash=(\d+))?",
             text,
         )
         if not m:
@@ -164,9 +177,32 @@ class FlightCliParser:
                 "baro_ok": bool(int(m.group(5))),
                 "angle_mode": bool(int(m.group(6))),
                 "baro_mode": bool(int(m.group(7))),
+                "air_mode": bool(int(m.group(8) or 0)),
+                "crash": bool(int(m.group(9) or 0)),
             }
         )
         self.state["status"] = status
+
+    def _parse_althold(self, text: str) -> None:
+        m = re.search(
+            rf"althold req=(\d+) ready=(\d+) active=(\d+) baro_ok=(\d+) imu_ok=(\d+) "
+            rf"tilt_ok=(\d+) armed=(\d+) alt={_INT}cm vel={_INT}cm/s out={_INT}",
+            text,
+        )
+        if not m:
+            return
+        self.state["althold"] = {
+            "requested": bool(int(m.group(1))),
+            "ready": bool(int(m.group(2))),
+            "active": bool(int(m.group(3))),
+            "baro_ok": bool(int(m.group(4))),
+            "imu_ok": bool(int(m.group(5))),
+            "tilt_ok": bool(int(m.group(6))),
+            "armed": bool(int(m.group(7))),
+            "altitude_cm": int(m.group(8)),
+            "velocity_cms": int(m.group(9)),
+            "output": int(m.group(10)),
+        }
 
     def _parse_uptime(self, text: str) -> None:
         m = re.search(r"uptime=(\d+)ms throttle=(\d+) motor_test=(\d+)", text)
@@ -217,15 +253,42 @@ class FlightCliParser:
         }
 
     def _parse_baro(self, text: str) -> None:
-        m = re.search(rf"baro ok=(\d+) temp={_INT}\.(\d+)C pressure={_INT}Pa altitude={_INT}cm", text)
+        m = re.search(rf"baro ok=(\d+) temp={_INT}\.(\d+)C pressure={_INT}Pa altitude={_INT}cm(?: vel={_INT}cm/s)?", text)
         if not m:
             return
-        self.state["baro"] = {
+        baro = self._dict("baro")
+        baro.update({
             "ok": bool(int(m.group(1))),
             "temp_c": float(f"{m.group(2)}.{m.group(3)}"),
             "pressure_pa": int(m.group(4)),
             "altitude_cm": int(m.group(5)),
-        }
+        })
+        if m.group(6) is not None:
+            baro["velocity_cms"] = int(m.group(6))
+        self.state["baro"] = baro
+
+    def _parse_baro_hold(self, text: str) -> None:
+        m = re.search(
+            rf"baro hold active=(\d+) velctl=(\d+) hold={_INT}cm err={_INT}cm "
+            rf"target_vel={_INT}cm/s base={_INT} corr={_INT} out={_INT}",
+            text,
+        )
+        if not m:
+            return
+        alt = self._dict("althold")
+        alt.update(
+            {
+                "active": bool(int(m.group(1))),
+                "velocity_control": bool(int(m.group(2))),
+                "hold_altitude_cm": int(m.group(3)),
+                "error_cm": int(m.group(4)),
+                "target_velocity_cms": int(m.group(5)),
+                "base": int(m.group(6)),
+                "correction": int(m.group(7)),
+                "output": int(m.group(8)),
+            }
+        )
+        self.state["althold"] = alt
 
     def _parse_rc_status(self, text: str) -> None:
         m = re.search(r"rc connected=(\d+) failsafe=(\d+) arm=(\d+) baro=(\d+) age=(\d+)ms", text)
@@ -320,7 +383,7 @@ class FlightCliParser:
         self.state["pid"] = pid
 
     def _parse_telemetry_status(self, text: str) -> None:
-        m = re.search(r"st arm=(\d+) fs=(\d+) rc=(\d+) imu=(\d+) baro=(\d+) thr=(\d+) batt=(\d+)mV", text)
+        m = re.search(r"st arm=(\d+) fs=(\d+).*?rc=(\d+) imu=(\d+) baro=(\d+)(?: air=(\d+) crash=(\d+))? thr=(\d+) batt=(\d+)mV", text)
         if not m:
             return
         status = self._dict("status")
@@ -331,16 +394,18 @@ class FlightCliParser:
                 "rc_ok": bool(int(m.group(3))),
                 "imu_ok": bool(int(m.group(4))),
                 "baro_ok": bool(int(m.group(5))),
-                "throttle": int(m.group(6)),
+                "air_mode": bool(int(m.group(6) or 0)),
+                "crash": bool(int(m.group(7) or 0)),
+                "throttle": int(m.group(8)),
             }
         )
         self.state["status"] = status
         batt = self._dict("battery")
-        batt["voltage_mv"] = int(m.group(7))
+        batt["voltage_mv"] = int(m.group(9))
         self.state["battery"] = batt
 
     def _parse_telemetry_attitude(self, text: str) -> None:
-        m = re.search(rf"att cd r={_INT} p={_INT} y={_INT} baro={_INT}cm p={_INT}Pa", text)
+        m = re.search(rf"att cd r={_INT} p={_INT} y={_INT} baro={_INT}cm(?: vel={_INT}cm/s)? p={_INT}Pa", text)
         if not m:
             return
         self.state["attitude"] = {
@@ -349,8 +414,33 @@ class FlightCliParser:
             "yaw": int(m.group(3)) / 100.0,
         }
         baro = self._dict("baro")
-        baro.update({"altitude_cm": int(m.group(4)), "pressure_pa": int(m.group(5))})
+        baro.update({"altitude_cm": int(m.group(4)), "pressure_pa": int(m.group(6))})
+        if m.group(5) is not None:
+            baro["velocity_cms"] = int(m.group(5))
         self.state["baro"] = baro
+
+    def _parse_control_alt(self, text: str) -> None:
+        m = re.search(
+            rf"control alt active=(\d+) velctl=(\d+) hold={_INT}cm err={_INT}cm "
+            rf"vel={_INT} target={_INT} base={_INT} corr={_INT}",
+            text,
+        )
+        if not m:
+            return
+        alt = self._dict("althold")
+        alt.update(
+            {
+                "active": bool(int(m.group(1))),
+                "velocity_control": bool(int(m.group(2))),
+                "hold_altitude_cm": int(m.group(3)),
+                "error_cm": int(m.group(4)),
+                "velocity_cms": int(m.group(5)),
+                "target_velocity_cms": int(m.group(6)),
+                "base": int(m.group(7)),
+                "correction": int(m.group(8)),
+            }
+        )
+        self.state["althold"] = alt
 
     def _parse_motors(self, text: str) -> None:
         m = re.search(r"mot (-?\d+) (-?\d+) (-?\d+) (-?\d+)", text)

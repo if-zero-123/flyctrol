@@ -185,8 +185,8 @@ class FakeSerialBackend(SerialBackend):
             if logging and (time.monotonic() - last_telem) > 0.5:
                 last_telem = time.monotonic()
                 self._emit(
-                    "st arm=0 fs=0 rc=1 imu=1 baro=1 thr=0 batt=3990mV\r\n"
-                    "att cd r=24 p=-16 y=110 baro=8cm p=100820Pa\r\n"
+                    "st arm=0 fs=0 rc=1 imu=1 baro=1 air=0 crash=0 thr=0 batt=3990mV\r\n"
+                    "att cd r=24 p=-16 y=110 baro=8cm vel=0cm/s p=100820Pa\r\n"
                     "mot 0 0 0 0\r\n> "
                 )
         self.connected = False
@@ -206,7 +206,12 @@ class FakeSerialBackend(SerialBackend):
                 logging,
             )
         if cmd == "status":
-            return "armed=0 failsafe=0 rc=1 imu=1 baro=1 mode angle=1 baro=0\r\nuptime=12345ms throttle=0 motor_test=0\r\nfailsafe_flags=0x0000 last_disarm=0x0000 motor_idle=120 motor_max=1000", logging
+            return (
+                "armed=0 failsafe=0 rc=1 imu=1 baro=1 mode angle=1 baro=1 air=0 crash=0\r\n"
+                "althold req=1 ready=1 active=0 baro_ok=1 imu_ok=1 tilt_ok=1 armed=0 alt=8cm vel=0cm/s out=0\r\n"
+                "uptime=12345ms throttle=0 motor_test=0\r\n"
+                "failsafe_flags=0x0000 last_disarm=0x0000 motor_idle=120 motor_max=1000"
+            ), logging
         if cmd == "clock":
             return "clock src=PLL pll=HSE sys=72000000Hz hclk=72000000Hz pclk1=36000000Hz pclk2=72000000Hz fallback=0", logging
         if cmd == "i2cscan":
@@ -214,7 +219,10 @@ class FakeSerialBackend(SerialBackend):
         if cmd == "imu":
             return "imu ok=1 acc_mg=12,-28,998 gyro_cdps=3,-2,1 temp=31.25C\r\natt cd roll=24 pitch=-16 yaw=110", logging
         if cmd == "baro":
-            return "baro ok=1 temp=29.88C pressure=100820Pa altitude=8cm", logging
+            return (
+                "baro ok=1 temp=29.88C pressure=100820Pa altitude=8cm vel=0cm/s\r\n"
+                "baro hold active=0 velctl=0 hold=0cm err=0cm target_vel=0cm/s base=0 corr=0 out=0"
+            ), logging
         if cmd == "rcmap":
             return "rcmap order=AETR roll=CH1 pitch=CH2 throttle=CH3 yaw=CH4 arm=CH5 baro=CH6 raw_min=172 raw_mid=992 raw_max=1811", logging
         if cmd == "rc":
@@ -239,10 +247,11 @@ class FakeSerialBackend(SerialBackend):
         if cmd in ("control", "ctrl"):
             return (
                 "control status arm=0 fs=0 flags=0x0000 rc=1 imu=1 imu_age=2ms yawdir=-1\r\n"
-                "control sp_cd r=0 p=0 yawrate_cdps=0 thr=0 baro=0\r\n"
+                "control sp_cd r=0 p=0 yawrate_cdps=0 thr=0 air=0 baro=1\r\n"
                 "control att_cd r=24 p=-16 y=110 healthy=1\r\n"
                 "control trim_cd r=0 p=0\r\n"
                 "control out_milli r=0 p=0 y=0 alt=0\r\n"
+                "control alt active=0 velctl=0 hold=0cm err=0cm vel=0 target=0 base=0 corr=0\r\n"
                 "control rate_sp_dps r=0 p=0 y=0 gyro_dps r=0 p=0 y=0\r\n"
                 "control pid_milli r=0,0,0 p=0,0,0 y=0,0,0\r\n"
                 "control mot_permille M1=0 M2=0 M3=0 M4=0"

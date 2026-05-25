@@ -176,7 +176,7 @@ class FlightDebugGui(tk.Tk):
         ttk.Button(controls, text="固件 log off", command=lambda: self.send_command("log off")).pack(side="left", padx=3)
 
         self.monitor_vars = {k: StringVar(value="-") for k in [
-            "armed", "failsafe", "rc", "imu", "baro", "battery", "att", "baro_detail", "sticks", "motors"
+            "armed", "failsafe", "rc", "imu", "baro", "althold", "battery", "att", "baro_detail", "sticks", "motors"
         ]}
         rows = [
             ("解锁", "armed"),
@@ -184,6 +184,7 @@ class FlightDebugGui(tk.Tk):
             ("RC", "rc"),
             ("IMU", "imu"),
             ("BARO", "baro"),
+            ("定高", "althold"),
             ("电池", "battery"),
             ("姿态", "att"),
             ("气压/高度", "baro_detail"),
@@ -658,7 +659,7 @@ class FlightDebugGui(tk.Tk):
             self.after(1500, self._poll_once)
             return
         if not self.command_queue and not self.waiting_for_prompt:
-            self.queue_commands(["status", "imu", "baro", "rc", "batt"])
+            self.queue_commands(["status", "imu", "baro", "control", "rc", "batt"])
         self.after(700, self._refresh_state_views)
         self.after(1500, self._poll_once)
 
@@ -854,6 +855,7 @@ class FlightDebugGui(tk.Tk):
         status = s.get("status", {})
         imu = s.get("imu", {})
         baro = s.get("baro", {})
+        althold = s.get("althold", {})
         rc = s.get("rc", {})
         batt = s.get("battery", {})
         i2c = s.get("i2c", {})
@@ -890,11 +892,16 @@ class FlightDebugGui(tk.Tk):
             self.monitor_vars["rc"].set(self._ok_bad(status.get("rc_ok")))
             self.monitor_vars["imu"].set(self._ok_bad(status.get("imu_ok") if "imu_ok" in status else imu.get("ok") if isinstance(imu, dict) else None))
             self.monitor_vars["baro"].set(self._ok_bad(status.get("baro_ok") if "baro_ok" in status else baro.get("ok") if isinstance(baro, dict) else None))
+        if isinstance(althold, dict) and althold:
+            self.monitor_vars["althold"].set(self._althold_text(althold))
         self.monitor_vars["battery"].set(self._battery_text(batt))
         if isinstance(att, dict):
             self.monitor_vars["att"].set(f"roll={att.get('roll', '-')} pitch={att.get('pitch', '-')} yaw={att.get('yaw', '-')}")
         if isinstance(baro, dict):
-            self.monitor_vars["baro_detail"].set(f"pressure={baro.get('pressure_pa', '-')}Pa altitude={baro.get('altitude_cm', '-')}cm")
+            self.monitor_vars["baro_detail"].set(
+                f"pressure={baro.get('pressure_pa', '-')}Pa altitude={baro.get('altitude_cm', '-')}cm "
+                f"vel={baro.get('velocity_cms', '-')}cm/s"
+            )
         if isinstance(rc, dict):
             self.monitor_vars["sticks"].set(
                 f"r={rc.get('roll', '-')} p={rc.get('pitch', '-')} y={rc.get('yaw', '-')} t={rc.get('throttle', '-')}"
@@ -1006,6 +1013,20 @@ class FlightDebugGui(tk.Tk):
         if value is False:
             return "异常"
         return "-"
+
+    @staticmethod
+    def _althold_text(althold: object) -> str:
+        if not isinstance(althold, dict) or not althold:
+            return "等待"
+        return (
+            f"req={int(bool(althold.get('requested')))} "
+            f"ready={int(bool(althold.get('ready')))} "
+            f"active={int(bool(althold.get('active')))} "
+            f"tilt={int(bool(althold.get('tilt_ok', True)))} "
+            f"hold={althold.get('hold_altitude_cm', althold.get('altitude_cm', '-'))}cm "
+            f"vel={althold.get('velocity_cms', '-')}cm/s "
+            f"out={althold.get('output', '-')}"
+        )
 
     @staticmethod
     def _battery_text(batt: object) -> str:

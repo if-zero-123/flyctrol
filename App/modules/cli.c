@@ -51,6 +51,11 @@ static int32_t duty_to_permille(float duty)
   return (int32_t)(duty * 1000.0f);
 }
 
+static float absf_local(float value)
+{
+  return (value < 0.0f) ? -value : value;
+}
+
 static const char *onoff(uint8_t value)
 {
   return (value != 0U) ? "on" : "off";
@@ -109,6 +114,16 @@ static void print_clock(void)
 static void print_status(void)
 {
   flight_status_t st = Topic_GetStatus();
+  app_rc_t rc = Topic_GetRc();
+  baro_sample_t baro = Topic_GetBaro();
+  attitude_t att = Topic_GetAttitude();
+  controller_altitude_debug_t alt;
+  ControllerAltitude_GetDebug(&alt);
+  bool tilt_ok = att.healthy &&
+                 (absf_local(att.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
+                 (absf_local(att.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
+  bool alt_ready = rc.baro_mode && st.baro_ok && st.imu_ok && tilt_ok;
+
   DebugUart_Printf("armed=%u failsafe=%u rc=%u imu=%u baro=%u mode angle=%u baro=%u air=%u crash=%u\r\n",
                    st.armed ? 1U : 0U,
                    st.failsafe ? 1U : 0U,
@@ -119,6 +134,17 @@ static void print_status(void)
                    st.baro_mode ? 1U : 0U,
                    st.air_mode ? 1U : 0U,
                    st.crash_detected ? 1U : 0U);
+  DebugUart_Printf("althold req=%u ready=%u active=%u baro_ok=%u imu_ok=%u tilt_ok=%u armed=%u alt=%ldcm vel=%dcm/s out=%d\r\n",
+                   rc.baro_mode ? 1U : 0U,
+                   alt_ready ? 1U : 0U,
+                   alt.active ? 1U : 0U,
+                   st.baro_ok ? 1U : 0U,
+                   st.imu_ok ? 1U : 0U,
+                   tilt_ok ? 1U : 0U,
+                   st.armed ? 1U : 0U,
+                   (long)baro.altitude_cm,
+                   baro.velocity_cms,
+                   alt.output_permille);
   DebugUart_Printf("uptime=%lums throttle=%u motor_test=%u\r\n",
                    (unsigned long)st.uptime_ms,
                    st.throttle_permille,
