@@ -54,6 +54,8 @@ void Safety_Update(void)
   bool rc_recent = rc.connected && ((now - rc.last_update_ms) <= BOARD_RC_TIMEOUT_MS) && !rc.failsafe;
   bool attitude_recent = att.healthy && (att.timestamp_ms != 0U) &&
                          ((now - att.timestamp_ms) <= BOARD_IMU_FAILSAFE_TIMEOUT_MS);
+  bool baro_recent = baro.healthy && (baro.timestamp_ms != 0U) &&
+                     ((now - baro.timestamp_ms) <= BOARD_BARO_TIMEOUT_MS);
   bool arming_angle_ok = attitude_recent && (absf_local(att.roll_deg) < 75.0f) &&
                          (absf_local(att.pitch_deg) < 75.0f);
   bool gyro_recent = imu.healthy && (imu.timestamp_ms != 0U) &&
@@ -151,9 +153,9 @@ void Safety_Update(void)
 
   s_status.rc_ok = rc_recent;
   s_status.imu_ok = attitude_recent;
-  s_status.baro_ok = baro.healthy;
+  s_status.baro_ok = baro_recent;
   s_status.angle_mode = rc.angle_mode;
-  s_status.baro_mode = rc.baro_mode && baro.healthy;
+  s_status.baro_mode = rc.baro_mode && baro_recent;
   s_status.crash_detected = s_crash_latched;
   s_status.throttle_permille = rc.throttle;
   s_status.motor_idle_permille = MixerQuad_GetMotorIdlePermille();

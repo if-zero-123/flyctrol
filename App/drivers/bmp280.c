@@ -12,6 +12,8 @@
 #define BMP280_CONFIG     0xF5U
 #define BMP280_PRESS_MSB  0xF7U
 #define BMP280_CALIB_REG  0x88U
+#define BMP280_CONFIG_FAST_FILTER_X4 0x08U
+#define BMP280_CTRL_TEMP_X1_PRESS_X8_NORMAL 0x33U
 
 typedef struct {
   uint16_t dig_T1;
@@ -128,8 +130,8 @@ bool Bmp280_Init(void)
   bool ok = true;
   ok = ok && write_reg(BMP280_RESET_REG, 0xB6U);
   HAL_Delay(5U);
-  ok = ok && write_reg(BMP280_CONFIG, 0xA0U);
-  ok = ok && write_reg(BMP280_CTRL_MEAS, 0x57U);
+  ok = ok && write_reg(BMP280_CONFIG, BMP280_CONFIG_FAST_FILTER_X4);
+  ok = ok && write_reg(BMP280_CTRL_MEAS, BMP280_CTRL_TEMP_X1_PRESS_X8_NORMAL);
   s_healthy = ok;
   return ok;
 }

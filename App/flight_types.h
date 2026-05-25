@@ -41,6 +41,7 @@ typedef struct {
   int32_t pressure_pa;
   int16_t temperature_centi_c;
   int32_t altitude_cm;
+  int16_t velocity_cms;
   bool healthy;
   uint32_t timestamp_ms;
 } baro_sample_t;

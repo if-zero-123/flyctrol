@@ -10,6 +10,7 @@
 #include "battery_adc.h"
 #include "bmp280.h"
 #include "board_config.h"
+#include "controller_altitude.h"
 #include "controller_attitude.h"
 #include "debug_uart.h"
 #include "estimator_attitude.h"
@@ -217,12 +218,24 @@ static void print_imu(void)
 static void print_baro(void)
 {
   baro_sample_t baro = Topic_GetBaro();
-  DebugUart_Printf("baro ok=%u temp=%d.%02dC pressure=%ldPa altitude=%ldcm\r\n",
+  controller_altitude_debug_t alt;
+  ControllerAltitude_GetDebug(&alt);
+  DebugUart_Printf("baro ok=%u temp=%d.%02dC pressure=%ldPa altitude=%ldcm vel=%dcm/s\r\n",
                    baro.healthy ? 1U : 0U,
                    baro.temperature_centi_c / 100,
                    abs(baro.temperature_centi_c % 100),
                    (long)baro.pressure_pa,
-                   (long)baro.altitude_cm);
+                   (long)baro.altitude_cm,
+                   baro.velocity_cms);
+  DebugUart_Printf("baro hold active=%u velctl=%u hold=%ldcm err=%dcm target_vel=%dcm/s base=%d corr=%d out=%d\r\n",
+                   alt.active ? 1U : 0U,
+                   alt.velocity_control ? 1U : 0U,
+                   (long)alt.hold_altitude_cm,
+                   alt.altitude_error_cm,
+                   alt.target_velocity_cms,
+                   alt.throttle_base_permille,
+                   alt.correction_permille,
+                   alt.output_permille);
 }
 
 static void print_rc(void)
@@ -325,11 +338,13 @@ static void print_control(void)
   attitude_t att = Topic_GetAttitude();
   imu_sample_t imu = Topic_GetImu();
   controller_attitude_debug_t dbg;
+  controller_altitude_debug_t alt;
   int8_t yawdir = ControllerAttitude_GetYawGyroDirection();
   float trim_roll = 0.0f;
   float trim_pitch = 0.0f;
   EstimatorAttitude_GetTrim(&trim_roll, &trim_pitch);
   ControllerAttitude_GetDebug(&dbg);
+  ControllerAltitude_GetDebug(&alt);
 
   DebugUart_Printf("control status arm=%u fs=%u flags=0x%04X rc=%u imu=%u imu_age=%lums yawdir=%d\r\n",
                    st.armed ? 1U : 0U,
@@ -359,6 +374,15 @@ static void print_control(void)
                    (long)float_to_milli(st.control.pitch),
                    (long)float_to_milli(st.control.yaw),
                    st.control.altitude_permille);
+  DebugUart_Printf("control alt active=%u velctl=%u hold=%ldcm err=%dcm vel=%d target=%d base=%d corr=%d\r\n",
+                   alt.active ? 1U : 0U,
+                   alt.velocity_control ? 1U : 0U,
+                   (long)alt.hold_altitude_cm,
+                   alt.altitude_error_cm,
+                   alt.velocity_cms,
+                   alt.target_velocity_cms,
+                   alt.throttle_base_permille,
+                   alt.correction_permille);
   DebugUart_Printf("control rate_sp_dps r=%d p=%d y=%d gyro_dps r=%d p=%d y=%d\r\n",
                    dbg.rate_setpoint_dps[PID_AXIS_ROLL],
                    dbg.rate_setpoint_dps[PID_AXIS_PITCH],

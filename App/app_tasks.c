@@ -32,6 +32,11 @@ static void BatteryTask(void *argument);
 static void TelemetryTask(void *argument);
 static void CliTask(void *argument);
 
+static float absf_local(float v)
+{
+  return (v < 0.0f) ? -v : v;
+}
+
 static void create_task(TaskFunction_t fn,
                         const char *name,
                         uint16_t stack_words,
@@ -104,12 +109,14 @@ static void StabilizerTask(void *argument)
     if (status.armed && !previous_armed)
     {
       ControllerAttitude_Reset();
+      ControllerAltitude_Reset();
       MixerQuad_ResetThrottleRamp();
       Mpu6050_ResetFilters();
     }
     else if (!status.armed && previous_armed)
     {
       ControllerAttitude_Reset();
+      ControllerAltitude_Reset();
       MixerQuad_ResetThrottleRamp();
       Mpu6050_ResetFilters();
       EstimatorAttitude_Init();
@@ -140,10 +147,12 @@ static void StabilizerTask(void *argument)
     {
       control = status.control;
     }
-    control.altitude_permille = ControllerAltitude_Update(&baro,
-                                                          &sp,
-                                                          control_enabled && status.baro_mode && attitude.healthy,
-                                                          0.002f);
+    bool baro_recent = baro.healthy &&
+                       ((BoardTime_Millis() - baro.timestamp_ms) <= BOARD_BARO_TIMEOUT_MS);
+    bool altitude_active = control_enabled && status.baro_mode && attitude.healthy && baro_recent &&
+                           (absf_local(attitude.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
+                           (absf_local(attitude.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
+    control.altitude_permille = ControllerAltitude_Update(&baro, &sp, altitude_active, 0.002f);
 
     if (Safety_CanRunMotors())
     {

@@ -57,11 +57,12 @@ void Telemetry_PrintOnce(void)
                    st.crash_detected ? 1U : 0U,
                    rc.throttle,
                    batt.voltage_mv);
-  DebugUart_Printf("att cd r=%ld p=%ld y=%ld baro=%ldcm p=%ldPa\r\n",
+  DebugUart_Printf("att cd r=%ld p=%ld y=%ld baro=%ldcm vel=%dcm/s p=%ldPa\r\n",
                    (long)deg_to_cdeg(att.roll_deg),
                    (long)deg_to_cdeg(att.pitch_deg),
                    (long)deg_to_cdeg(att.yaw_deg),
                    (long)baro.altitude_cm,
+                   baro.velocity_cms,
                    (long)baro.pressure_pa);
   DebugUart_Printf("ctl sp=%ld,%ld,%ld out=%ld,%ld,%ld\r\n",
                    (long)deg_to_cdeg(st.setpoint.roll_deg),
