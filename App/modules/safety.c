@@ -8,6 +8,7 @@
 
 static flight_status_t s_status;
 static bool s_cli_arm_request;
+static bool s_arm_seen_low;
 static uint32_t s_motor_test_until_ms;
 static uint32_t s_battery_critical_since_ms;
 static bool s_motor_test_bench;
@@ -20,6 +21,7 @@ static float absf_local(float v)
 void Safety_Init(void)
 {
   s_cli_arm_request = false;
+  s_arm_seen_low = false;
   s_motor_test_until_ms = 0U;
   s_battery_critical_since_ms = 0U;
   s_motor_test_bench = false;
@@ -35,10 +37,13 @@ void Safety_Update(void)
   baro_sample_t baro = Topic_GetBaro();
   battery_status_t batt = Topic_GetBattery();
   uint32_t now = BoardTime_Millis();
+  bool was_armed = s_status.armed;
 
   bool rc_recent = rc.connected && ((now - rc.last_update_ms) <= BOARD_RC_TIMEOUT_MS) && !rc.failsafe;
-  bool attitude_recent = (att.timestamp_ms != 0U) && ((now - att.timestamp_ms) <= BOARD_IMU_FAILSAFE_TIMEOUT_MS);
-  bool level_ok = attitude_recent && (absf_local(att.roll_deg) < 75.0f) && (absf_local(att.pitch_deg) < 75.0f);
+  bool attitude_recent = att.healthy && (att.timestamp_ms != 0U) &&
+                         ((now - att.timestamp_ms) <= BOARD_IMU_FAILSAFE_TIMEOUT_MS);
+  bool arming_angle_ok = attitude_recent && (absf_local(att.roll_deg) < 75.0f) &&
+                         (absf_local(att.pitch_deg) < 75.0f);
   bool battery_sample_critical = batt.voltage_mv <= BOARD_BATT_CRITICAL_MV;
   if (batt.voltage_mv >= BOARD_BATT_RECOVER_MV)
   {
@@ -51,6 +56,10 @@ void Safety_Update(void)
   bool battery_ok = (s_battery_critical_since_ms == 0U) ||
                     ((now - s_battery_critical_since_ms) < BOARD_BATT_CRITICAL_HOLD_MS);
   bool arm_request = rc.arm_switch || s_cli_arm_request;
+  if (!arm_request)
+  {
+    s_arm_seen_low = true;
+  }
   bool throttle_low = rc.throttle <= BOARD_ARM_THROTTLE_MAX;
   uint16_t failsafe_flags = 0U;
 
@@ -58,17 +67,17 @@ void Safety_Update(void)
   {
     failsafe_flags |= SAFETY_FAILSAFE_RC;
   }
-  if (!level_ok)
+  if (!attitude_recent || (!was_armed && !arming_angle_ok))
   {
     failsafe_flags |= SAFETY_FAILSAFE_IMU;
   }
-  if (!battery_ok)
+  if (!was_armed && !battery_ok)
   {
     failsafe_flags |= SAFETY_FAILSAFE_BATTERY;
   }
 
   s_status.rc_ok = rc_recent;
-  s_status.imu_ok = level_ok;
+  s_status.imu_ok = attitude_recent;
   s_status.baro_ok = baro.healthy;
   s_status.angle_mode = rc.angle_mode;
   s_status.baro_mode = rc.baro_mode && baro.healthy;
@@ -83,20 +92,24 @@ void Safety_Update(void)
   }
   s_status.motor_test_unlocked = (!s_status.armed) && (now <= s_motor_test_until_ms) && (s_motor_test_bench || !s_status.failsafe);
 
-  bool was_armed = s_status.armed;
-
-  if (s_status.failsafe || !arm_request)
+  bool inflight_stop = !rc_recent || !attitude_recent;
+  if (!arm_request || (was_armed && inflight_stop))
   {
     s_status.armed = false;
     if (was_armed)
     {
-      s_status.last_disarm_flags = s_status.failsafe ? failsafe_flags : SAFETY_DISARM_ARM_LOST;
+      s_status.last_disarm_flags = arm_request ? failsafe_flags : SAFETY_DISARM_ARM_LOST;
+      if (arm_request)
+      {
+        s_arm_seen_low = false;
+      }
     }
   }
-  else if (!s_status.armed && arm_request && throttle_low)
+  else if (!s_status.armed && arm_request && s_arm_seen_low && throttle_low && !s_status.failsafe)
   {
     s_status.armed = true;
     s_status.last_disarm_flags = 0U;
+    s_arm_seen_low = false;
   }
 
   if (!s_status.armed && !s_status.motor_test_unlocked)

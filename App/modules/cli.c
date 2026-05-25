@@ -31,9 +31,28 @@ static int32_t gain_to_milli(float gain)
   return (int32_t)(gain * 1000.0f);
 }
 
+static int32_t float_to_milli(float value)
+{
+  return (int32_t)(value * 1000.0f);
+}
+
+static int32_t duty_to_permille(float duty)
+{
+  if (duty < 0.0f)
+  {
+    duty = 0.0f;
+  }
+  if (duty > 1.0f)
+  {
+    duty = 1.0f;
+  }
+  return (int32_t)(duty * 1000.0f);
+}
+
 static void print_help(void)
 {
-  DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag motormap");
+  DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
+  DebugUart_WriteLine("cmd: motormap control mixcheck [r_milli p_milli y_milli thr]");
   DebugUart_WriteLine("cmd: motoridle [0-200], motor unlock|stop|<1-4> <permille>, motors <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]");
   DebugUart_WriteLine("cmd: gyrocal acccal imucal arm disarm log on|off reboot");
@@ -257,6 +276,80 @@ static void print_motormap(void)
   DebugUart_WriteLine("motormap layout: M4 front-left, M2 front-right, M3 rear-left, M1 rear-right");
   DebugUart_WriteLine("motormap output: M1=PA8/CN6 M2=PA11/CN4 M3=PB6/CN3 M4=PB7/CN1");
   DebugUart_WriteLine("motormap spin: standard M1/M4=CW, M2/M3=CCW viewed from top");
+  DebugUart_WriteLine("motormap correction: right-low -> M1/M2 up, nose-low -> M2/M4 up");
+}
+
+static void print_control(void)
+{
+  flight_status_t st = Topic_GetStatus();
+  attitude_t att = Topic_GetAttitude();
+
+  DebugUart_Printf("control sp_cd r=%ld p=%ld yawrate_cdps=%ld thr=%u baro=%u\r\n",
+                   (long)deg_to_cdeg(st.setpoint.roll_deg),
+                   (long)deg_to_cdeg(st.setpoint.pitch_deg),
+                   (long)deg_to_cdeg(st.setpoint.yaw_rate_dps),
+                   st.setpoint.throttle_permille,
+                   st.setpoint.baro_hold ? 1U : 0U);
+  DebugUart_Printf("control att_cd r=%ld p=%ld y=%ld healthy=%u\r\n",
+                   (long)deg_to_cdeg(att.roll_deg),
+                   (long)deg_to_cdeg(att.pitch_deg),
+                   (long)deg_to_cdeg(att.yaw_deg),
+                   att.healthy ? 1U : 0U);
+  DebugUart_Printf("control out_milli r=%ld p=%ld y=%ld alt=%d\r\n",
+                   (long)float_to_milli(st.control.roll),
+                   (long)float_to_milli(st.control.pitch),
+                   (long)float_to_milli(st.control.yaw),
+                   st.control.altitude_permille);
+  DebugUart_Printf("control mot_permille M1=%ld M2=%ld M3=%ld M4=%ld\r\n",
+                   (long)duty_to_permille(st.motor[0]),
+                   (long)duty_to_permille(st.motor[1]),
+                   (long)duty_to_permille(st.motor[2]),
+                   (long)duty_to_permille(st.motor[3]));
+}
+
+static void cmd_mixcheck(char *roll_s, char *pitch_s, char *yaw_s, char *thr_s)
+{
+  control_output_t control = {0};
+  float motor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  int throttle = 200;
+
+  if (roll_s != NULL)
+  {
+    control.roll = (float)atoi(roll_s) / 1000.0f;
+  }
+  if (pitch_s != NULL)
+  {
+    control.pitch = (float)atoi(pitch_s) / 1000.0f;
+  }
+  if (yaw_s != NULL)
+  {
+    control.yaw = (float)atoi(yaw_s) / 1000.0f;
+  }
+  if (thr_s != NULL)
+  {
+    throttle = atoi(thr_s);
+  }
+  if (throttle < 0)
+  {
+    throttle = 0;
+  }
+  if (throttle > 1000)
+  {
+    throttle = 1000;
+  }
+
+  MixerQuad_Mix((uint16_t)throttle, &control, motor);
+  DebugUart_Printf("mixcheck in_milli r=%ld p=%ld y=%ld thr=%d\r\n",
+                   (long)float_to_milli(control.roll),
+                   (long)float_to_milli(control.pitch),
+                   (long)float_to_milli(control.yaw),
+                   throttle);
+  DebugUart_Printf("mixcheck M1=%ld M2=%ld M3=%ld M4=%ld\r\n",
+                   (long)duty_to_permille(motor[0]),
+                   (long)duty_to_permille(motor[1]),
+                   (long)duty_to_permille(motor[2]),
+                   (long)duty_to_permille(motor[3]));
+  DebugUart_WriteLine("mixcheck +roll=>M3/M4 up, +pitch=>M1/M3 up, +yaw=>M2/M3 up");
 }
 
 static void cmd_motoridle(char *arg1)
@@ -478,6 +571,14 @@ static void execute_line(char *line)
   else if (strcmp(cmd, "motormap") == 0)
   {
     print_motormap();
+  }
+  else if ((strcmp(cmd, "control") == 0) || (strcmp(cmd, "ctrl") == 0))
+  {
+    print_control();
+  }
+  else if (strcmp(cmd, "mixcheck") == 0)
+  {
+    cmd_mixcheck(a1, a2, a3, a4);
   }
   else if (strcmp(cmd, "motoridle") == 0)
   {

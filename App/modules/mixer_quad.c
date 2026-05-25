@@ -109,9 +109,9 @@ void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, 
   float p = control->pitch;
   float y = control->yaw;
 
-  motor_out[0] = t - r - p + y;
-  motor_out[1] = t - r + p - y;
-  motor_out[2] = t + r - p - y;
-  motor_out[3] = t + r + p + y;
+  motor_out[0] = t - r + p - y; /* M1 rear-right, CW */
+  motor_out[1] = t - r - p + y; /* M2 front-right, CCW */
+  motor_out[2] = t + r + p + y; /* M3 rear-left, CCW */
+  motor_out[3] = t + r - p - y; /* M4 front-left, CW */
   normalize_to_idle(motor_out, idle);
 }

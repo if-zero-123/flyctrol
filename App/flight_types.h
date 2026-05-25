@@ -82,6 +82,8 @@ typedef struct {
   uint16_t last_disarm_flags;
   uint16_t motor_idle_permille;
   uint16_t throttle_permille;
+  control_setpoint_t setpoint;
+  control_output_t control;
   float motor[APP_MOTOR_COUNT];
   uint32_t uptime_ms;
 } flight_status_t;

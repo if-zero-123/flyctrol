@@ -119,6 +119,8 @@ static void StabilizerTask(void *argument)
     status = Safety_GetStatus();
     MotorPwm_GetLast(status.motor);
     status.throttle_permille = rc.throttle;
+    status.setpoint = sp;
+    status.control = control;
     Topic_PublishStatus(&status);
 
     vTaskDelayUntil(&last, period);
