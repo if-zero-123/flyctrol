@@ -13,6 +13,7 @@ static bool s_arm_seen_low;
 static bool s_arm_raw_prev;
 static bool s_arm_request_stable;
 static uint32_t s_arm_change_ms;
+static uint32_t s_arm_lost_since_ms;
 static uint32_t s_motor_test_until_ms;
 static uint32_t s_battery_critical_since_ms;
 static uint32_t s_crash_since_ms;
@@ -31,6 +32,7 @@ void Safety_Init(void)
   s_arm_raw_prev = false;
   s_arm_request_stable = false;
   s_arm_change_ms = 0U;
+  s_arm_lost_since_ms = 0U;
   s_motor_test_until_ms = 0U;
   s_battery_critical_since_ms = 0U;
   s_crash_since_ms = 0U;
@@ -137,7 +139,7 @@ void Safety_Update(void)
   {
     arm_block_flags |= SAFETY_ARM_BLOCK_BATTERY;
   }
-  if (s_crash_latched)
+  if (s_crash_latched && (BOARD_CRASH_DISARM_ENABLE != 0U))
   {
     failsafe_flags |= SAFETY_FAILSAFE_CRASH;
     arm_block_flags |= SAFETY_ARM_BLOCK_CRASH;
@@ -170,8 +172,23 @@ void Safety_Update(void)
   }
   s_status.motor_test_unlocked = (!s_status.armed) && (now <= s_motor_test_until_ms) && (s_motor_test_bench || !s_status.failsafe);
 
-  bool inflight_stop = !rc_recent || !attitude_recent || s_crash_latched;
-  if (!arm_request || (was_armed && inflight_stop))
+  bool inflight_stop = !rc_recent || !attitude_recent ||
+                       (s_crash_latched && (BOARD_CRASH_DISARM_ENABLE != 0U));
+  bool arm_lost_confirmed = !arm_request;
+  if (was_armed && !arm_request)
+  {
+    if (s_arm_lost_since_ms == 0U)
+    {
+      s_arm_lost_since_ms = now;
+    }
+    arm_lost_confirmed = (now - s_arm_lost_since_ms) >= BOARD_INFLIGHT_ARM_LOST_HOLD_MS;
+  }
+  else
+  {
+    s_arm_lost_since_ms = 0U;
+  }
+
+  if (arm_lost_confirmed || (was_armed && inflight_stop))
   {
     s_status.armed = false;
     if (was_armed)

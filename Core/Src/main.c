@@ -344,7 +344,7 @@ int main(void)
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
   s_boot_stage = 11U;
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 512);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 256);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */

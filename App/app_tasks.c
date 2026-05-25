@@ -53,13 +53,13 @@ static void create_task(TaskFunction_t fn,
 
 void App_CreateTasks(void)
 {
-  create_task(StabilizerTask, "stabilize", 320U, 5U, 51U);
-  create_task(CrsfTask, "crsf", 192U, 6U, 52U);
-  create_task(SafetyTask, "safety", 160U, 4U, 53U);
-  create_task(BaroTask, "baro", 192U, 3U, 54U);
-  create_task(BatteryTask, "battery", 144U, 2U, 55U);
-  create_task(TelemetryTask, "telem", 256U, 1U, 56U);
-  create_task(CliTask, "cli", 512U, 1U, 57U);
+  create_task(StabilizerTask, "stabilize", 256U, 5U, 51U);
+  create_task(CrsfTask, "crsf", 160U, 6U, 52U);
+  create_task(SafetyTask, "safety", 128U, 4U, 53U);
+  create_task(BaroTask, "baro", 160U, 3U, 54U);
+  create_task(BatteryTask, "battery", 128U, 2U, 55U);
+  create_task(TelemetryTask, "telem", 160U, 1U, 56U);
+  create_task(CliTask, "cli", 384U, 1U, 57U);
 }
 
 static void StabilizerTask(void *argument)
