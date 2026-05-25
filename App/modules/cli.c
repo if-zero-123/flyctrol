@@ -12,6 +12,7 @@
 #include "board_config.h"
 #include "controller_attitude.h"
 #include "debug_uart.h"
+#include "estimator_attitude.h"
 #include "i2c_bus.h"
 #include "main.h"
 #include "mixer_quad.h"
@@ -35,7 +36,7 @@ static void print_help(void)
   DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag motormap");
   DebugUart_WriteLine("cmd: motoridle [0-200], motor unlock|stop|<1-4> <permille>, motors <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]");
-  DebugUart_WriteLine("cmd: gyrocal arm disarm log on|off reboot");
+  DebugUart_WriteLine("cmd: gyrocal acccal imucal arm disarm log on|off reboot");
 }
 
 static const char *sysclk_source_name(void)
@@ -271,6 +272,14 @@ static void cmd_motoridle(char *arg1)
   DebugUart_Printf("motoridle=%u permille\r\n", MixerQuad_GetMotorIdlePermille());
 }
 
+static void reset_attitude_after_cal(bool ok)
+{
+  if (ok)
+  {
+    EstimatorAttitude_Init();
+  }
+}
+
 static bool parse_axis(const char *name, pid_axis_t *axis)
 {
   if ((name == NULL) || (axis == NULL))
@@ -490,7 +499,24 @@ static void execute_line(char *line)
     Safety_RequestDisarm();
     DebugUart_WriteLine("gyrocal: keep aircraft still");
     bool ok = Mpu6050_CalibrateGyro(200U);
+    reset_attitude_after_cal(ok);
     DebugUart_Printf("gyrocal=%u\r\n", ok ? 1U : 0U);
+  }
+  else if (strcmp(cmd, "acccal") == 0)
+  {
+    Safety_RequestDisarm();
+    DebugUart_WriteLine("acccal: level aircraft and keep still");
+    bool ok = Mpu6050_CalibrateAccel(200U);
+    reset_attitude_after_cal(ok);
+    DebugUart_Printf("acccal=%u\r\n", ok ? 1U : 0U);
+  }
+  else if (strcmp(cmd, "imucal") == 0)
+  {
+    Safety_RequestDisarm();
+    DebugUart_WriteLine("imucal: level aircraft and keep still");
+    bool ok = Mpu6050_CalibrateImu(200U);
+    reset_attitude_after_cal(ok);
+    DebugUart_Printf("imucal=%u\r\n", ok ? 1U : 0U);
   }
   else if (strcmp(cmd, "arm") == 0)
   {

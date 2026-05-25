@@ -16,6 +16,7 @@
 
 static bool s_healthy;
 static float s_gyro_bias_dps[3];
+static float s_accel_bias_g[3];
 
 static bool write_reg(uint8_t reg, uint8_t value)
 {
@@ -86,6 +87,9 @@ bool Mpu6050_Init(void)
   s_gyro_bias_dps[0] = 0.0f;
   s_gyro_bias_dps[1] = 0.0f;
   s_gyro_bias_dps[2] = 0.0f;
+  s_accel_bias_g[0] = 0.0f;
+  s_accel_bias_g[1] = 0.0f;
+  s_accel_bias_g[2] = 0.0f;
 
   if (!read_reg(MPU6050_WHO_AM_I, &who) || (who != 0x68U))
   {
@@ -148,6 +152,53 @@ bool Mpu6050_CalibrateGyro(uint16_t samples)
   return true;
 }
 
+bool Mpu6050_CalibrateAccel(uint16_t samples)
+{
+  if (samples < 16U)
+  {
+    samples = 16U;
+  }
+
+  int64_t ax_sum = 0;
+  int64_t ay_sum = 0;
+  int64_t az_sum = 0;
+  uint16_t ok_count = 0U;
+
+  for (uint16_t i = 0U; i < samples; i++)
+  {
+    int16_t ax = 0;
+    int16_t ay = 0;
+    int16_t az = 0;
+    if (read_raw(&ax, &ay, &az, NULL, NULL, NULL, NULL))
+    {
+      ax_sum += ax;
+      ay_sum += ay;
+      az_sum += az;
+      ok_count++;
+    }
+    HAL_Delay(2U);
+  }
+
+  if (ok_count < (samples / 2U))
+  {
+    s_healthy = false;
+    return false;
+  }
+
+  s_accel_bias_g[0] = ((float)ax_sum / (float)ok_count) / 8192.0f;
+  s_accel_bias_g[1] = ((float)ay_sum / (float)ok_count) / 8192.0f;
+  s_accel_bias_g[2] = (((float)az_sum / (float)ok_count) / 8192.0f) - 1.0f;
+  s_healthy = true;
+  return true;
+}
+
+bool Mpu6050_CalibrateImu(uint16_t samples)
+{
+  bool gyro_ok = Mpu6050_CalibrateGyro(samples);
+  bool accel_ok = Mpu6050_CalibrateAccel(samples);
+  return gyro_ok && accel_ok;
+}
+
 bool Mpu6050_Read(imu_sample_t *out)
 {
   if (out == NULL)
@@ -171,9 +222,9 @@ bool Mpu6050_Read(imu_sample_t *out)
     return false;
   }
 
-  out->accel_g[0] = (float)ax / 8192.0f;
-  out->accel_g[1] = (float)ay / 8192.0f;
-  out->accel_g[2] = (float)az / 8192.0f;
+  out->accel_g[0] = ((float)ax / 8192.0f) - s_accel_bias_g[0];
+  out->accel_g[1] = ((float)ay / 8192.0f) - s_accel_bias_g[1];
+  out->accel_g[2] = ((float)az / 8192.0f) - s_accel_bias_g[2];
   out->gyro_dps[0] = ((float)gx / 65.5f) - s_gyro_bias_dps[0];
   out->gyro_dps[1] = ((float)gy / 65.5f) - s_gyro_bias_dps[1];
   out->gyro_dps[2] = ((float)gz / 65.5f) - s_gyro_bias_dps[2];
