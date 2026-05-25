@@ -9,6 +9,7 @@
 static flight_status_t s_status;
 static bool s_cli_arm_request;
 static uint32_t s_motor_test_until_ms;
+static uint32_t s_battery_critical_since_ms;
 static bool s_motor_test_bench;
 
 static float absf_local(float v)
@@ -20,6 +21,7 @@ void Safety_Init(void)
 {
   s_cli_arm_request = false;
   s_motor_test_until_ms = 0U;
+  s_battery_critical_since_ms = 0U;
   s_motor_test_bench = false;
   s_status.armed = false;
   s_status.failsafe = true;
@@ -37,7 +39,17 @@ void Safety_Update(void)
   bool rc_recent = rc.connected && ((now - rc.last_update_ms) <= BOARD_RC_TIMEOUT_MS) && !rc.failsafe;
   bool attitude_recent = (att.timestamp_ms != 0U) && ((now - att.timestamp_ms) <= BOARD_IMU_FAILSAFE_TIMEOUT_MS);
   bool level_ok = attitude_recent && (absf_local(att.roll_deg) < 75.0f) && (absf_local(att.pitch_deg) < 75.0f);
-  bool battery_ok = !batt.critical;
+  bool battery_sample_critical = batt.voltage_mv <= BOARD_BATT_CRITICAL_MV;
+  if (batt.voltage_mv >= BOARD_BATT_RECOVER_MV)
+  {
+    s_battery_critical_since_ms = 0U;
+  }
+  else if (battery_sample_critical && (s_battery_critical_since_ms == 0U))
+  {
+    s_battery_critical_since_ms = now;
+  }
+  bool battery_ok = (s_battery_critical_since_ms == 0U) ||
+                    ((now - s_battery_critical_since_ms) < BOARD_BATT_CRITICAL_HOLD_MS);
   bool arm_request = rc.arm_switch || s_cli_arm_request;
   bool throttle_low = rc.throttle <= BOARD_ARM_THROTTLE_MAX;
   uint16_t failsafe_flags = 0U;

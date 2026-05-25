@@ -45,9 +45,11 @@ void Telemetry_PrintOnce(void)
   float motor[4];
   MotorPwm_GetLast(motor);
 
-  DebugUart_Printf("st arm=%u fs=%u rc=%u imu=%u baro=%u thr=%u batt=%umV\r\n",
+  DebugUart_Printf("st arm=%u fs=%u flags=0x%04X dis=0x%04X rc=%u imu=%u baro=%u thr=%u batt=%umV\r\n",
                    st.armed ? 1U : 0U,
                    st.failsafe ? 1U : 0U,
+                   st.failsafe_flags,
+                   st.last_disarm_flags,
                    st.rc_ok ? 1U : 0U,
                    st.imu_ok ? 1U : 0U,
                    st.baro_ok ? 1U : 0U,

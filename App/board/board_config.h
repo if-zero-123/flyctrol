@@ -13,6 +13,8 @@
 #define BOARD_ADC_MAX_COUNTS          4095U
 #define BOARD_BATT_LOW_MV             7000U
 #define BOARD_BATT_CRITICAL_MV        6600U
+#define BOARD_BATT_CRITICAL_HOLD_MS   1000U
+#define BOARD_BATT_RECOVER_MV         6800U
 #define BOARD_BATT_FULL_MV            8400U
 #define BOARD_BATT_EMPTY_MV           6600U
 
