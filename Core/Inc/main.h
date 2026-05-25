@@ -45,6 +45,7 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 void AppBootStage_Set(uint32_t stage);
+uint32_t AppClock_IsHsiFallback(void);
 extern ADC_HandleTypeDef hadc1;
 extern DMA_HandleTypeDef hdma_usart2_rx;
 extern I2C_HandleTypeDef hi2c2;

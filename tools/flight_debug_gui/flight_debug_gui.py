@@ -7,6 +7,7 @@ import queue
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from tkinter import BooleanVar, IntVar, StringVar, filedialog, messagebox
@@ -34,24 +35,45 @@ class FlightDebugGui(tk.Tk):
         self.raw_log: list[str] = []
         self.port_items: list[tuple[str, str]] = []
         self.polling = False
+        self.receiver_polling = False
         self.self_test_running = False
         self.rx_bytes = 0
         self.tx_count = 0
         self.last_rx_time = 0.0
         self.last_tx_time = 0.0
         self.no_rx_warning_shown = False
+        self.cli_ready = False
+        self.connect_started_at = 0.0
+        self.prompt_probe_sent_at = 0.0
+        self.command_queue: deque[str] = deque()
+        self.waiting_for_prompt = False
+        self.command_inflight = ""
+        self.command_deadline = 0.0
+        self.command_gap_until = 0.0
+        self.command_sent_rx_count = 0
+        self.command_quiet_deadline = 0.0
+        self.command_history: list[str] = []
+        self.command_history_index = 0
 
         self.connected_text = StringVar(value="未连接")
         self.link_stats_text = StringVar(value="TX 0 条 | RX 0 字节 | 未收到数据")
         self.selected_port = StringVar(value="")
         self.manual_command = StringVar(value="")
+        self.terminal_mode = BooleanVar(value=True)
         self.motor_permille = IntVar(value=80)
         self.props_removed = BooleanVar(value=False)
         self.advanced_motor = BooleanVar(value=False)
+        self.allow_failsafe_motor_test = BooleanVar(value=False)
+        self.receiver_status_text = StringVar(value="等待接收机数据")
+        self.receiver_map_text = StringVar(value="AETR: CH1 Roll, CH2 Pitch, CH3 Thr, CH4 Yaw, CH5 ARM, CH6 BARO")
+        self.receiver_norm_text = StringVar(value="-")
+        self.receiver_channel_values: list[IntVar] = []
+        self.receiver_channel_labels: list[StringVar] = []
 
         self._build_ui()
         self.refresh_ports()
         self.after(50, self._process_events)
+        self.after(100, self._command_watchdog)
         self.after(300, self._refresh_state_views)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -67,6 +89,7 @@ class FlightDebugGui(tk.Tk):
         self._build_connect_tab()
         self._build_self_test_tab()
         self._build_monitor_tab()
+        self._build_receiver_tab()
         self._build_motor_tab()
         self._build_checklist_tab()
 
@@ -87,9 +110,7 @@ class FlightDebugGui(tk.Tk):
         ttk.Button(controls, text="保存日志", command=self.save_log).pack(side="right", padx=3)
         ttk.Button(controls, text="保存CSV", command=self.save_csv).pack(side="right", padx=3)
 
-        hint = (
-            "连接后不用抢复位；固件会每秒打印 hb tick=...。板载 USB-C 通常就是调试串口。"
-        )
+        hint = "连接后等待启动文本；命令按静默窗口串行发送，电机 STOP ALL 可随时抢发。"
         ttk.Label(tab, text=hint).pack(fill="x", pady=(8, 4))
         ttk.Label(tab, textvariable=self.link_stats_text, foreground="#1d4ed8").pack(fill="x", pady=(0, 4))
 
@@ -99,7 +120,11 @@ class FlightDebugGui(tk.Tk):
         entry = ttk.Entry(cmd, textvariable=self.manual_command)
         entry.pack(side="left", fill="x", expand=True, padx=6)
         entry.bind("<Return>", lambda _e: self.send_manual())
+        entry.bind("<Up>", self._history_prev)
+        entry.bind("<Down>", self._history_next)
         ttk.Button(cmd, text="发送", command=self.send_manual).pack(side="left")
+        ttk.Button(cmd, text="慢速发送多行", command=self.send_multiline_manual).pack(side="left", padx=3)
+        ttk.Checkbutton(cmd, text="终端模式", variable=self.terminal_mode).pack(side="left", padx=6)
 
         text_frame = ttk.Frame(tab)
         text_frame.pack(fill="both", expand=True)
@@ -114,7 +139,7 @@ class FlightDebugGui(tk.Tk):
         self.notebook.add(tab, text="自检")
 
         ttk.Button(tab, text="一键自检", command=self.run_self_test).pack(anchor="w")
-        self.self_test_summary = ttk.Label(tab, text="点击一键自检后，会自动执行 status/i2cscan/imu/baro/rc/batt/heap/tasks。")
+        self.self_test_summary = ttk.Label(tab, text="点击一键自检后，会自动执行 status/clock/i2cscan/imu/baro/rc/batt/heap/tasks。")
         self.self_test_summary.pack(fill="x", pady=8)
 
         self.check_labels: dict[str, ttk.Label] = {}
@@ -122,6 +147,7 @@ class FlightDebugGui(tk.Tk):
         grid.pack(fill="x")
         checks = [
             ("boot", "启动输出"),
+            ("clock", "系统时钟"),
             ("i2c", "I2C: 0x68/0x76"),
             ("imu", "MPU6050 姿态"),
             ("baro", "BMP280 气压"),
@@ -170,6 +196,42 @@ class FlightDebugGui(tk.Tk):
             ttk.Label(panel, text=label + ":", width=12).grid(row=i, column=0, sticky="w", pady=5)
             ttk.Label(panel, textvariable=self.monitor_vars[key], font=("Consolas", 11)).grid(row=i, column=1, sticky="w", pady=5)
 
+    def _build_receiver_tab(self) -> None:
+        tab = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(tab, text="接收机")
+
+        controls = ttk.Frame(tab)
+        controls.pack(fill="x")
+        ttk.Button(controls, text="刷新接收机", command=lambda: self.queue_commands(["rcmap", "rc"])).pack(side="left", padx=3)
+        ttk.Button(controls, text="开始监控", command=self.start_receiver_polling).pack(side="left", padx=3)
+        ttk.Button(controls, text="停止监控", command=self.stop_receiver_polling).pack(side="left", padx=3)
+        ttk.Label(controls, textvariable=self.receiver_status_text, foreground="#1d4ed8").pack(side="left", padx=12)
+
+        ttk.Label(tab, textvariable=self.receiver_map_text).pack(anchor="w", pady=(10, 4))
+        ttk.Label(tab, textvariable=self.receiver_norm_text, font=("Consolas", 11)).pack(anchor="w", pady=(0, 10))
+
+        channel_box = ttk.LabelFrame(tab, text="CRSF 通道", padding=10)
+        channel_box.pack(fill="x")
+        names = ["CH1 Roll", "CH2 Pitch", "CH3 Thr", "CH4 Yaw", "CH5 ARM", "CH6 BARO", "CH7 AUX3", "CH8 AUX4"]
+        self.receiver_channel_values = []
+        self.receiver_channel_labels = []
+        for row, name in enumerate(names):
+            value = IntVar(value=0)
+            label = StringVar(value=f"{name}: -")
+            self.receiver_channel_values.append(value)
+            self.receiver_channel_labels.append(label)
+            ttk.Label(channel_box, text=name, width=12).grid(row=row, column=0, sticky="w", pady=4)
+            ttk.Progressbar(channel_box, maximum=100, variable=value, length=520).grid(row=row, column=1, sticky="ew", padx=8, pady=4)
+            ttk.Label(channel_box, textvariable=label, font=("Consolas", 10), width=24).grid(row=row, column=2, sticky="w", pady=4)
+        channel_box.columnconfigure(1, weight=1)
+
+        note = ttk.Label(
+            tab,
+            text="控制逻辑: CH1/2/4 归一化为 -1000..1000 姿态/偏航输入，CH3 为 0..1000 油门，CH5 高于约1500 解锁请求，CH6 高于约1500 开启 BARO 模式。",
+            wraplength=900,
+        )
+        note.pack(anchor="w", pady=(14, 0))
+
     def _build_motor_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(tab, text="电机测试")
@@ -190,6 +252,7 @@ class FlightDebugGui(tk.Tk):
         self.motor_spin = ttk.Spinbox(row, from_=0, to=150, textvariable=self.motor_permille, width=8, command=self._clamp_motor_value)
         self.motor_spin.pack(side="left", padx=6)
         ttk.Checkbutton(row, text="高级模式(最高300)", variable=self.advanced_motor, command=self._toggle_advanced_motor).pack(side="left", padx=12)
+        ttk.Checkbutton(row, text="台架模式(忽略RC/电池failsafe)", variable=self.allow_failsafe_motor_test).pack(side="left", padx=12)
 
         self.motor_status = StringVar(value="等待自检状态")
         ttk.Label(tab, textvariable=self.motor_status).pack(anchor="w", pady=(4, 12))
@@ -259,30 +322,174 @@ class FlightDebugGui(tk.Tk):
             self.last_rx_time = 0.0
             self.last_tx_time = 0.0
             self.no_rx_warning_shown = False
+            self.cli_ready = False
+            self.connect_started_at = time.monotonic()
+            self.prompt_probe_sent_at = 0.0
+            self.command_queue.clear()
+            self.waiting_for_prompt = False
+            self.command_inflight = ""
+            self.command_deadline = 0.0
+            self.command_gap_until = 0.0
+            self.command_sent_rx_count = 0
+            self.command_quiet_deadline = 0.0
             self._update_link_stats()
-            self.connected_text.set(f"已连接: {port}")
-            self.append_log(f"\n[HOST] connected {port}\n")
-            self.after(500, lambda: self.send_command("help"))
+            self.connected_text.set(f"已连接: {port}，等待 CLI")
+            self.append_log(f"\n[HOST] connected {port}, waiting for CLI ready/prompt\n")
+            self.after(1300, self._probe_cli_prompt)
             self.after(3200, self._warn_if_no_rx_after_connect)
         except Exception as exc:
             self.backend = None
             messagebox.showerror("连接失败", str(exc))
 
     def disconnect(self) -> None:
+        self.command_queue.clear()
+        self.waiting_for_prompt = False
+        self.command_inflight = ""
+        self.command_sent_rx_count = 0
+        self.command_quiet_deadline = 0.0
+        self.cli_ready = False
+        self.polling = False
+        self.receiver_polling = False
         if self.backend is not None:
             self.backend.close()
             self.backend = None
         self.connected_text.set("未连接")
         self._update_link_stats()
 
-    def send_command(self, command: str) -> None:
+    def send_command(self, command: str, *, priority: bool = False, clear_pending: bool = False) -> None:
+        command = command.strip()
         if not command:
             return
         if self.backend is None or not self.backend.connected:
             self.append_log(f"\n[HOST] 未连接，无法发送: {command}\n")
             return
+        if clear_pending:
+            self.command_queue.clear()
+            self.waiting_for_prompt = False
+            self.command_inflight = ""
+        if priority:
+            self._send_command_now(command, wait_for_prompt=False)
+            return
+        self.command_queue.append(command)
+        self._pump_command_queue()
+
+    def queue_commands(self, commands: list[str], *, clear_pending: bool = False) -> None:
+        if clear_pending:
+            self.command_queue.clear()
+            self.waiting_for_prompt = False
+            self.command_inflight = ""
+        for command in commands:
+            command = command.strip()
+            if command:
+                self.command_queue.append(command)
+        self._pump_command_queue()
+
+    def _send_command_now(self, command: str, *, wait_for_prompt: bool = True) -> None:
+        if self.backend is None or not self.backend.connected:
+            return
         self.last_tx_time = time.monotonic()
-        self.backend.send(command)
+        self.waiting_for_prompt = wait_for_prompt
+        self.command_inflight = command if wait_for_prompt else ""
+        self.command_sent_rx_count = self.rx_bytes
+        duration = self._command_delay_s(command)
+        self.command_deadline = self.last_tx_time + duration
+        self.command_quiet_deadline = self.last_tx_time + min(duration, 0.22)
+        if not wait_for_prompt and hasattr(self.backend, "send_now"):
+            self.backend.send_now(command)
+        else:
+            self.backend.send(command)
+
+    def _pump_command_queue(self) -> None:
+        if self.backend is None or not self.backend.connected:
+            return
+        if not self.cli_ready:
+            now = time.monotonic()
+            if self.connect_started_at > 0.0 and (now - self.connect_started_at) < 1.2:
+                self._probe_cli_prompt()
+                self.after(150, self._pump_command_queue)
+                return
+            self._mark_cli_ready("timeout")
+        if self.waiting_for_prompt:
+            return
+        if not self.command_queue:
+            return
+        now = time.monotonic()
+        if now < self.command_gap_until:
+            self.after(int((self.command_gap_until - now) * 1000) + 10, self._pump_command_queue)
+            return
+        self._send_command_now(self.command_queue.popleft(), wait_for_prompt=True)
+
+    def queue_slow_lines(self, text: str, delay_ms: int = 80) -> None:
+        lines = [line.strip() for line in text.replace("\r", "\n").split("\n")]
+        commands = [line for line in lines if line]
+        if not commands:
+            return
+
+        def push_one(index: int = 0) -> None:
+            if index >= len(commands):
+                return
+            self.send_command(commands[index])
+            self.after(delay_ms, lambda: push_one(index + 1))
+
+        push_one()
+
+    @staticmethod
+    def _command_delay_s(command: str) -> float:
+        head = command.split(" ", 1)[0]
+        if head in ("motor", "motors", "arm", "disarm", "log"):
+            return 0.28
+        if head in ("status", "clock", "imu", "baro", "rc", "rcmap", "batt", "heap", "pid"):
+            return 0.45
+        if head == "help":
+            return 0.9
+        if head == "tasks":
+            return 1.4
+        if head == "i2cscan":
+            return 1.3
+        return 0.6
+
+    def _probe_cli_prompt(self) -> None:
+        if self.backend is None or not self.backend.connected or self.cli_ready:
+            return
+        now = time.monotonic()
+        if self.prompt_probe_sent_at > 0.0 and (now - self.prompt_probe_sent_at) < 2.0:
+            return
+        if self.connect_started_at > 0.0 and (now - self.connect_started_at) < 1.0:
+            return
+        self.prompt_probe_sent_at = now
+        self.backend.send("")
+        self.append_log("\n[HOST] 等待 CLI 提示符，发送空回车探测\n")
+        self.after(2100, self._probe_cli_prompt)
+
+    def _mark_cli_ready(self, reason: str = "prompt") -> None:
+        if self.cli_ready:
+            return
+        self.cli_ready = True
+        if self.backend is not None and self.backend.connected:
+            self.connected_text.set(f"已连接: {self._selected_port_id()}，CLI 就绪")
+        if reason == "timeout":
+            self.append_log("\n[HOST] 未捕获完整提示符，已按延时模式发送队列命令\n")
+        else:
+            self.append_log("\n[HOST] CLI ready，开始按队列发送命令\n")
+        self._pump_command_queue()
+
+    def _mark_command_complete(self, reason: str) -> None:
+        if self.waiting_for_prompt:
+            self.waiting_for_prompt = False
+            self.command_inflight = ""
+            self.command_deadline = 0.0
+            self.command_gap_until = time.monotonic() + 0.04
+            self.after(40, self._pump_command_queue)
+
+    def _command_watchdog(self) -> None:
+        if self.waiting_for_prompt:
+            now = time.monotonic()
+            got_response = self.rx_bytes > self.command_sent_rx_count
+            if got_response and now > self.command_quiet_deadline:
+                self._mark_command_complete("response")
+            elif now > self.command_deadline:
+                self._mark_command_complete("delay")
+        self.after(100, self._command_watchdog)
 
     def run_serial_diagnosis(self) -> None:
         if self.backend is None or not self.backend.connected:
@@ -290,8 +497,7 @@ class FlightDebugGui(tk.Tk):
             return
         before = self.rx_bytes
         self.append_log("\n[HOST] 串口诊断: 发送 help/status，并等待飞控回复...\n")
-        self.send_command("help")
-        self.after(350, lambda: self.send_command("status"))
+        self.queue_commands(["help", "status"], clear_pending=True)
         self.after(2500, lambda b=before: self._finish_serial_diagnosis(b))
 
     def start_auto_probe(self) -> None:
@@ -302,7 +508,7 @@ class FlightDebugGui(tk.Tk):
         if not ports:
             messagebox.showwarning("自动探测", "没有发现真实 COM 口。请先插入板载 USB-C 或 USB-TTL。")
             return
-        self.append_log("\n[HOST] 自动探测开始：逐个打开 COM，等待 hb/help/status...\n")
+        self.append_log("\n[HOST] 自动探测开始：逐个打开 COM，等待启动文本并尝试 help/status...\n")
         threading.Thread(target=self._auto_probe_worker, args=(ports,), daemon=True).start()
 
     def _auto_probe_worker(self, ports: list[tuple[str, str]]) -> None:
@@ -333,8 +539,7 @@ class FlightDebugGui(tk.Tk):
             "CLOCK OK",
             "HAL USART1 OK",
             "ERROR_HANDLER",
-            "hb tick=",
-            "cmd: help status tasks",
+            "cmd: help status",
             "armed=",
         ))
 
@@ -347,7 +552,60 @@ class FlightDebugGui(tk.Tk):
     def send_manual(self) -> None:
         cmd = self.manual_command.get().strip()
         self.manual_command.set("")
-        self.send_command(cmd)
+        if not cmd:
+            return
+        self.command_history.append(cmd)
+        self.command_history_index = len(self.command_history)
+        if "\n" in cmd or "\r" in cmd:
+            self.queue_slow_lines(cmd)
+        else:
+            self.send_command(cmd)
+
+    def send_multiline_manual(self) -> None:
+        text = self.manual_command.get()
+        if "\n" in text or "\r" in text:
+            self.manual_command.set("")
+            self.queue_slow_lines(text, delay_ms=100)
+            return
+
+        dialog = tk.Toplevel(self)
+        dialog.title("慢速发送多行命令")
+        dialog.geometry("520x360")
+        dialog.transient(self)
+        dialog.grab_set()
+        box = tk.Text(dialog, wrap="none", font=("Consolas", 10))
+        box.pack(fill="both", expand=True, padx=10, pady=(10, 6))
+        if text:
+            box.insert("1.0", text)
+
+        buttons = ttk.Frame(dialog)
+        buttons.pack(fill="x", padx=10, pady=(0, 10))
+
+        def do_send() -> None:
+            payload = box.get("1.0", "end").strip()
+            dialog.destroy()
+            self.manual_command.set("")
+            self.queue_slow_lines(payload, delay_ms=100)
+
+        ttk.Button(buttons, text="发送", command=do_send).pack(side="right", padx=4)
+        ttk.Button(buttons, text="取消", command=dialog.destroy).pack(side="right", padx=4)
+
+    def _history_prev(self, _event) -> str:
+        if not self.command_history:
+            return "break"
+        self.command_history_index = max(0, self.command_history_index - 1)
+        self.manual_command.set(self.command_history[self.command_history_index])
+        return "break"
+
+    def _history_next(self, _event) -> str:
+        if not self.command_history:
+            return "break"
+        self.command_history_index = min(len(self.command_history), self.command_history_index + 1)
+        if self.command_history_index >= len(self.command_history):
+            self.manual_command.set("")
+        else:
+            self.manual_command.set(self.command_history[self.command_history_index])
+        return "break"
 
     def run_self_test(self) -> None:
         if self.self_test_running:
@@ -355,11 +613,19 @@ class FlightDebugGui(tk.Tk):
         self.self_test_running = True
         self.self_test_summary.configure(text="自检运行中...")
         rx_before = self.rx_bytes
-        commands = ["status", "i2cscan", "imu", "baro", "rc", "batt", "heap", "tasks", "pid"]
-        for index, cmd in enumerate(commands):
-            self.after(index * 300, lambda c=cmd: self.send_command(c))
-        self.after(len(commands) * 350 + 600, self._finish_self_test)
-        self.after(len(commands) * 350 + 800, lambda b=rx_before: self._warn_if_self_test_no_rx(b))
+        commands = ["status", "i2cscan", "imu", "baro", "rcmap", "rc", "batt", "heap", "tasks", "pid"]
+        commands.insert(1, "clock")
+        self.queue_commands(commands, clear_pending=True)
+        self.after(500, self._check_self_test_done)
+        self.after(5000, lambda b=rx_before: self._warn_if_self_test_no_rx(b))
+
+    def _check_self_test_done(self) -> None:
+        if not self.self_test_running:
+            return
+        if not self.command_queue and not self.waiting_for_prompt:
+            self._finish_self_test()
+            return
+        self.after(200, self._check_self_test_done)
 
     def _finish_self_test(self) -> None:
         self.self_test_running = False
@@ -376,29 +642,57 @@ class FlightDebugGui(tk.Tk):
     def _poll_once(self) -> None:
         if not self.polling:
             return
-        for index, cmd in enumerate(["status", "imu", "baro", "rc", "batt"]):
-            self.after(index * 120, lambda c=cmd: self.send_command(c))
+        if self.terminal_mode.get() and self.notebook.tab(self.notebook.select(), "text") == "连接/日志":
+            self.after(1500, self._poll_once)
+            return
+        if not self.command_queue and not self.waiting_for_prompt:
+            self.queue_commands(["status", "imu", "baro", "rc", "batt"])
         self.after(700, self._refresh_state_views)
-        self.after(1000, self._poll_once)
+        self.after(1500, self._poll_once)
+
+    def start_receiver_polling(self) -> None:
+        self.receiver_polling = True
+        self.queue_commands(["rcmap", "rc"])
+        self._receiver_poll_once()
+
+    def stop_receiver_polling(self) -> None:
+        self.receiver_polling = False
+
+    def _receiver_poll_once(self) -> None:
+        if not self.receiver_polling:
+            return
+        if self.terminal_mode.get() and self.notebook.tab(self.notebook.select(), "text") == "连接/日志":
+            self.after(250, self._receiver_poll_once)
+            return
+        if not self.command_queue and not self.waiting_for_prompt:
+            self.queue_commands(["rc"])
+        self.after(250, self._receiver_poll_once)
 
     def test_motor(self, motor: int) -> None:
         if not self._motor_test_allowed():
             return
         value = self._clamp_motor_value()
-        self.send_command("motor unlock")
-        self.after(250, lambda: self.send_command(f"motor {motor} {value}"))
+        self.polling = False
+        self.receiver_polling = False
+        unlock_cmd = "motor unlock bench" if self.allow_failsafe_motor_test.get() else "motor unlock"
+        self.send_command(unlock_cmd, priority=True, clear_pending=True)
+        self.after(220, lambda n=motor, v=value: self.send_command(f"motor {n} {v}", priority=True))
+        self.after(500, lambda: self.queue_commands(["status"], clear_pending=False))
         self.after(4500, self.stop_all_motors)
 
     def stop_all_motors(self) -> None:
-        self.send_command("motor stop")
-        self.after(80, lambda: self.send_command("motors 0"))
+        self.waiting_for_prompt = False
+        self.command_inflight = ""
+        self.send_command("motor stop", priority=True, clear_pending=True)
+        self.after(80, lambda: self.send_command("motors 0", priority=True))
+        self.after(250, lambda: self.queue_commands(["status"], clear_pending=False))
 
     def request_arm(self) -> None:
         if messagebox.askyesno("确认 ARM", "确认要发送 arm？请确保油门最低、飞控水平、周围安全。"):
             self.send_command("arm")
 
     def request_disarm(self) -> None:
-        self.send_command("disarm")
+        self.send_command("disarm", priority=True, clear_pending=True)
         self.after(50, self.stop_all_motors)
 
     def save_log(self) -> None:
@@ -457,10 +751,18 @@ class FlightDebugGui(tk.Tk):
                     self._update_link_stats()
                     self.append_log(text)
                     self._feed_parser(text)
+                    has_prompt = self._chunk_has_prompt(text)
+                    if has_prompt:
+                        self.parser.state["prompt_seen"] = True
+                    if has_prompt or ("CLI ready" in text) or ("init: tasks" in text):
+                        self._mark_cli_ready()
                 elif kind == "tx":
                     self.tx_count += 1
                     self._update_link_stats()
-                    self.append_log(f"\n>> {text}\n")
+                    if text:
+                        self.append_log(f"\n>> {text}\n")
+                    else:
+                        self.append_log("\n>> <ENTER>\n")
                 elif kind == "error":
                     self.append_log(f"\n[ERROR] {text}\n")
                 elif kind == "probe_found":
@@ -485,7 +787,8 @@ class FlightDebugGui(tk.Tk):
             rx_text = f"最近接收 {age:.1f}s 前"
         else:
             rx_text = "未收到数据"
-        self.link_stats_text.set(f"TX {self.tx_count} 条 | RX {self.rx_bytes} 字节 | {rx_text}")
+        pending = len(self.command_queue) + (1 if self.waiting_for_prompt else 0)
+        self.link_stats_text.set(f"TX {self.tx_count} 条 | RX {self.rx_bytes} 字节 | {rx_text} | 待发/等待 {pending}")
 
     def _warn_if_no_rx_after_connect(self) -> None:
         if self.backend is None or not self.backend.connected:
@@ -508,12 +811,16 @@ class FlightDebugGui(tk.Tk):
             "1. USB-TTL RX 接飞控 PA9，USB-TTL TX 接飞控 PA10，GND 必须共地。\n"
             "2. 不要接 PA2/PA3；那组是 CRSF 接收机串口，波特率 420000。\n"
             "3. 串口参数固定 115200, 8N1, 无流控。\n"
-            "4. 固件已加入每秒 hb 心跳；不用卡复位时机，连接后等 3-5 秒 RX 字节也应该增加。\n"
+            "4. 连接后上位机会等待启动文本，并每隔约 2 秒发一次空回车探测提示符；不用卡复位时机。\n"
             "5. 如果用外接 USB-TTL，可把 USB-TTL 的 TX 和 RX 短接做回环测试；若回环也没字符，说明选错 COM 或转接器/驱动有问题。\n"
             "6. 如果用板载 USB-C，优先选择插入该 USB-C 后新增的 COM 口。"
         )
         self.append_log("\n[HOST] " + text.replace("\n", "\n[HOST] ") + "\n")
         messagebox.showwarning("没有收到串口数据", text)
+
+    @staticmethod
+    def _chunk_has_prompt(text: str) -> bool:
+        return ">" in text
 
     def _feed_parser(self, text: str) -> None:
         normalized = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -526,6 +833,7 @@ class FlightDebugGui(tk.Tk):
         self._update_link_stats()
         self._refresh_self_test()
         self._refresh_monitor()
+        self._refresh_receiver()
         self._refresh_motor_buttons()
         self.after(500, self._refresh_state_views)
 
@@ -538,8 +846,11 @@ class FlightDebugGui(tk.Tk):
         batt = s.get("battery", {})
         i2c = s.get("i2c", {})
         heap = s.get("heap", {})
+        clock = s.get("clock", {})
 
         self._set_check("boot", bool(s.get("boot_seen")), "已看到 boot" if s.get("boot_seen") else "等待 boot")
+        clock_ok = isinstance(clock, dict) and clock.get("sys_hz")
+        self._set_check("clock", bool(clock_ok) and not bool(clock.get("fallback")), self._clock_text(clock))
         addrs = i2c.get("addresses", []) if isinstance(i2c, dict) else []
         self._set_check("i2c", "0x68" in addrs and "0x76" in addrs, f"{' '.join(addrs) if addrs else '等待'}")
         self._set_check("imu", bool(imu.get("ok")) if isinstance(imu, dict) else False, f"ok={int(bool(imu.get('ok')))}" if isinstance(imu, dict) and imu else "等待")
@@ -549,7 +860,7 @@ class FlightDebugGui(tk.Tk):
         self._set_check("batt", bool(battery_ok), self._battery_text(batt))
         failsafe_ok = isinstance(status, dict) and status.get("failsafe") is False
         self._set_check("failsafe", bool(failsafe_ok), f"failsafe={int(status.get('failsafe', 1))}" if isinstance(status, dict) and status else "等待")
-        self._set_check("heap", bool(heap), f"free={heap.get('free')} min={heap.get('min')}" if isinstance(heap, dict) and heap else "等待")
+        self._set_check("heap", bool(heap), f"free={heap.get('free')} min={heap.get('min')} rxdrop={heap.get('rxdrop', 0)}" if isinstance(heap, dict) and heap else "等待")
 
     def _refresh_monitor(self) -> None:
         s = self.parser.latest()
@@ -579,6 +890,41 @@ class FlightDebugGui(tk.Tk):
         if isinstance(motors, dict):
             self.monitor_vars["motors"].set(str(motors.get("m", "-")))
 
+    def _refresh_receiver(self) -> None:
+        s = self.parser.latest()
+        rc = s.get("rc", {})
+        rcmap = s.get("rcmap", {})
+        if isinstance(rcmap, dict) and rcmap:
+            self.receiver_map_text.set(
+                "AETR 映射: "
+                f"Roll={rcmap.get('roll', 'CH1')} Pitch={rcmap.get('pitch', 'CH2')} "
+                f"Thr={rcmap.get('throttle', 'CH3')} Yaw={rcmap.get('yaw', 'CH4')} "
+                f"ARM={rcmap.get('arm', 'CH5')} BARO={rcmap.get('baro', 'CH6')}"
+            )
+        if not isinstance(rc, dict) or not rc:
+            self.receiver_status_text.set("等待接收机数据")
+            return
+
+        self.receiver_status_text.set(
+            f"connected={int(bool(rc.get('connected')))} failsafe={int(bool(rc.get('failsafe')))} "
+            f"ARM={int(bool(rc.get('arm')))} BARO={int(bool(rc.get('baro')))} age={rc.get('age_ms', '-')}ms"
+        )
+        self.receiver_norm_text.set(
+            f"roll={rc.get('roll', '-'):>5} pitch={rc.get('pitch', '-'):>5} "
+            f"yaw={rc.get('yaw', '-'):>5} throttle={rc.get('throttle', '-'):>4}"
+        )
+
+        raw = rc.get("raw", [])
+        if not isinstance(raw, list):
+            raw = []
+        names = ["Roll", "Pitch", "Thr", "Yaw", "ARM", "BARO", "AUX3", "AUX4"]
+        for index, value_var in enumerate(self.receiver_channel_values):
+            raw_value = int(raw[index]) if index < len(raw) else 0
+            percent = self._raw_channel_percent(raw_value)
+            value_var.set(percent)
+            if index < len(self.receiver_channel_labels):
+                self.receiver_channel_labels[index].set(f"CH{index + 1} {names[index]}: {raw_value:4d}  {percent:3d}%")
+
     def _set_check(self, key: str, ok: bool, text: str) -> None:
         label = self.check_labels[key]
         label.configure(text=("OK: " if ok else "检查: ") + text, foreground=("#15803d" if ok else "#b91c1c"))
@@ -605,8 +951,8 @@ class FlightDebugGui(tk.Tk):
             messagebox.showwarning("禁止测试", "串口未连接。")
             return False
         status = self.parser.latest().get("status", {})
-        if not isinstance(status, dict) or status.get("failsafe") is not False:
-            messagebox.showwarning("禁止测试", "当前 failsafe 未确认正常，请先运行自检并确认 RC/IMU/电池。")
+        if isinstance(status, dict) and status.get("failsafe") is True and not self.allow_failsafe_motor_test.get():
+            messagebox.showwarning("禁止测试", "当前 failsafe=1。请先确认接收机在线、油门最低、飞控未处于失控保护。")
             return False
         return True
 
@@ -660,6 +1006,18 @@ class FlightDebugGui(tk.Tk):
         if not isinstance(rc, dict) or not rc:
             return "等待"
         return f"connected={int(bool(rc.get('connected')))} failsafe={int(bool(rc.get('failsafe')))} age={rc.get('age_ms', '-')}"
+
+    @staticmethod
+    def _raw_channel_percent(raw_value: int) -> int:
+        percent = int((raw_value - 172) * 100 / (1811 - 172))
+        return max(0, min(100, percent))
+
+    @staticmethod
+    def _clock_text(clock: object) -> str:
+        if not isinstance(clock, dict) or not clock:
+            return "等待"
+        mhz = int(clock.get("sys_hz", 0)) / 1000000.0
+        return f"src={clock.get('src', '-')} pll={clock.get('pll', '-')} sys={mhz:.1f}MHz fallback={int(bool(clock.get('fallback')))}"
 
 
 def main() -> int:

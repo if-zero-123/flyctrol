@@ -74,6 +74,9 @@ class SerialBackend:
         if self.connected:
             self.tx.put(command)
 
+    def send_now(self, command: str) -> None:
+        self.send(command)
+
     def close(self) -> None:
         self.stop_event.set()
         self.connected = False
@@ -103,10 +106,20 @@ class RealSerialBackend(SerialBackend):
         self.thread = threading.Thread(target=self._run, name="flight-serial", daemon=True)
         self.thread.start()
 
+    def send_now(self, command: str) -> None:
+        if self.ser is None or not self.connected:
+            return
+        try:
+            self.ser.write((command + "\r\n").encode("ascii", errors="ignore"))
+            self.ser.flush()
+            self.events.put(("tx", command))
+        except Exception as exc:
+            self.events.put(("error", f"发送失败: {exc}"))
+
     def close(self) -> None:
         try:
             if self.connected:
-                self.send("motor stop")
+                self.send_now("motor stop")
                 time.sleep(0.05)
         finally:
             super().close()
@@ -123,6 +136,7 @@ class RealSerialBackend(SerialBackend):
                 while True:
                     command = self.tx.get_nowait()
                     self.ser.write((command + "\r\n").encode("ascii", errors="ignore"))
+                    self.ser.flush()
                     self.events.put(("tx", command))
             except queue.Empty:
                 pass
@@ -151,23 +165,22 @@ class FakeSerialBackend(SerialBackend):
     def _emit(self, text: str) -> None:
         self.events.put(("rx", text))
 
+    def send_now(self, command: str) -> None:
+        if self.connected:
+            self.tx.put(command)
+
     def _run(self) -> None:
         self._emit("\r\nNAZE32 custom firmware boot\r\nCLI ready: type help\r\n> ")
         last_telem = time.monotonic()
-        last_hb = time.monotonic()
         logging = False
-        heartbeat = True
         while not self.stop_event.is_set():
             try:
                 cmd = self.tx.get(timeout=0.05)
                 self.events.put(("tx", cmd))
-                response, logging, heartbeat = self._response(cmd.strip(), logging, heartbeat)
+                response, logging = self._response(cmd.strip(), logging)
                 self._emit(response + "\r\n> ")
             except queue.Empty:
                 pass
-            if heartbeat and (time.monotonic() - last_hb) > 1.0:
-                last_hb = time.monotonic()
-                self._emit("hb tick=12345ms heap=7816 arm=0 fs=0 rc=1 imu=1 baro=1 thr=0 batt=3990mV\r\n> ")
             if logging and (time.monotonic() - last_telem) > 0.5:
                 last_telem = time.monotonic()
                 self._emit(
@@ -179,56 +192,59 @@ class FakeSerialBackend(SerialBackend):
         self.events.put(("info", "演示串口已断开"))
 
     @staticmethod
-    def _response(cmd: str, logging: bool, heartbeat: bool) -> Tuple[str, bool, bool]:
+    def _response(cmd: str, logging: bool) -> Tuple[str, bool]:
+        if cmd == "":
+            return "", logging
         if cmd == "help":
             return (
-                "cmd: help status tasks heap i2cscan imu baro rc batt\r\n"
+                "cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt\r\n"
                 "cmd: motor unlock|stop|<1-4> <permille>, motors <permille>\r\n"
                 "cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]\r\n"
-                "cmd: arm disarm log on|off hb on|off reboot",
+                "cmd: arm disarm log on|off reboot",
                 logging,
-                heartbeat,
             )
         if cmd == "status":
-            return "armed=0 failsafe=0 rc=1 imu=1 baro=1 mode angle=1 baro=0\r\nuptime=12345ms throttle=0 motor_test=0", logging, heartbeat
+            return "armed=0 failsafe=0 rc=1 imu=1 baro=1 mode angle=1 baro=0\r\nuptime=12345ms throttle=0 motor_test=0", logging
+        if cmd == "clock":
+            return "clock src=PLL pll=HSE sys=72000000Hz hclk=72000000Hz pclk1=36000000Hz pclk2=72000000Hz fallback=0", logging
         if cmd == "i2cscan":
-            return "i2c: 0x68 0x76", logging, heartbeat
+            return "i2c: 0x68 0x76", logging
         if cmd == "imu":
-            return "imu ok=1 acc_mg=12,-28,998 gyro_cdps=3,-2,1 temp=31.25C\r\natt cd roll=24 pitch=-16 yaw=110", logging, heartbeat
+            return "imu ok=1 acc_mg=12,-28,998 gyro_cdps=3,-2,1 temp=31.25C\r\natt cd roll=24 pitch=-16 yaw=110", logging
         if cmd == "baro":
-            return "baro ok=1 temp=29.88C pressure=100820Pa altitude=8cm", logging, heartbeat
+            return "baro ok=1 temp=29.88C pressure=100820Pa altitude=8cm", logging
+        if cmd == "rcmap":
+            return "rcmap order=AETR roll=CH1 pitch=CH2 throttle=CH3 yaw=CH4 arm=CH5 baro=CH6 raw_min=172 raw_mid=992 raw_max=1811", logging
         if cmd == "rc":
-            return "rc connected=1 failsafe=0 arm=0 baro=0 age=12ms\r\nstick r=0 p=0 y=0 t=0 raw=992,992,172,992,988,988", logging, heartbeat
+            return "rc connected=1 failsafe=0 arm=0 baro=0 age=12ms\r\nstick r=0 p=0 y=0 t=0 raw=992,992,172,992,988,988,172,172,172,172,172,172,172,172,172,172", logging
         if cmd == "batt":
-            return "batt raw=1125 voltage=3990mV percent=76 low=0 critical=0", logging, heartbeat
+            return "batt raw=1125 voltage=3990mV percent=76 low=0 critical=0", logging
         if cmd == "heap":
-            return "heap free=7816 min=7040", logging, heartbeat
+            return "heap free=7816 min=7040 rxdrop=0", logging
         if cmd == "tasks":
-            return "name          state prio stack num\r\nstabilize     B     5    92    1\r\ncli           R     1    211   7", logging, heartbeat
+            return "name          state prio stack num\r\nstabilize     B     5    92    1\r\ncli           R     1    211   7", logging
         if cmd == "pid":
-            return "roll kp=3500 ki=0 kd=45 milli\r\npitch kp=3500 ki=0 kd=45 milli\r\nyaw kp=1800 ki=0 kd=0 milli", logging, heartbeat
+            return "roll kp=3500 ki=0 kd=45 milli\r\npitch kp=3500 ki=0 kd=45 milli\r\nyaw kp=1800 ki=0 kd=0 milli", logging
         if cmd.startswith("pid "):
-            return "pid ok", logging, heartbeat
+            return "pid ok", logging
         if cmd == "motor unlock":
-            return "motor test unlocked for 5s if safety is ok", logging, heartbeat
+            return "motor test unlocked bench=0", logging
+        if cmd == "motor unlock bench":
+            return "motor test unlocked bench=1", logging
         if cmd.startswith("motor ") and cmd != "motor stop":
             parts = cmd.split()
-            return f"motor {parts[1]}={parts[2] if len(parts) > 2 else 0}", logging, heartbeat
+            return f"motor {parts[1]}={parts[2] if len(parts) > 2 else 0}", logging
         if cmd in ("motor stop", "motors 0"):
-            return "motors stopped", logging, heartbeat
+            return "motors stopped", logging
         if cmd == "log on":
-            return "log=1", True, heartbeat
+            return "log=1", True
         if cmd == "log off":
-            return "log=0", False, heartbeat
-        if cmd == "hb on":
-            return "hb=1", logging, True
-        if cmd == "hb off":
-            return "hb=0", logging, False
+            return "log=0", False
         if cmd == "arm":
-            return "arm requested", logging, heartbeat
+            return "arm requested", logging
         if cmd == "disarm":
-            return "disarmed", logging, heartbeat
-        return "unknown command", logging, heartbeat
+            return "disarmed", logging
+        return "unknown command", logging
 
 
 def create_backend(port: str, events: "queue.Queue[Event]") -> SerialBackend:

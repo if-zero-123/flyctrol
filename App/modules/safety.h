@@ -12,6 +12,7 @@ bool Safety_CanMotorTest(void);
 void Safety_RequestArm(bool enable);
 void Safety_RequestDisarm(void);
 void Safety_MotorTestUnlock(uint32_t window_ms);
+void Safety_MotorTestBenchUnlock(uint32_t window_ms);
 flight_status_t Safety_GetStatus(void);
 
 #endif /* APP_SAFETY_H */

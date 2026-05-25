@@ -1,5 +1,6 @@
 #include "cli.h"
 
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -30,10 +31,49 @@ static int32_t gain_to_milli(float gain)
 
 static void print_help(void)
 {
-  DebugUart_WriteLine("cmd: help status tasks heap i2cscan imu baro rc batt");
+  DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt");
   DebugUart_WriteLine("cmd: motor unlock|stop|<1-4> <permille>, motors <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]");
-  DebugUart_WriteLine("cmd: arm disarm log on|off hb on|off reboot");
+  DebugUart_WriteLine("cmd: arm disarm log on|off reboot");
+}
+
+static const char *sysclk_source_name(void)
+{
+  uint32_t source = __HAL_RCC_GET_SYSCLK_SOURCE();
+  if (source == RCC_SYSCLKSOURCE_STATUS_HSI)
+  {
+    return "HSI";
+  }
+  if (source == RCC_SYSCLKSOURCE_STATUS_HSE)
+  {
+    return "HSE";
+  }
+  if (source == RCC_SYSCLKSOURCE_STATUS_PLLCLK)
+  {
+    return "PLL";
+  }
+  return "UNKNOWN";
+}
+
+static const char *pll_source_name(void)
+{
+  if (__HAL_RCC_GET_SYSCLK_SOURCE() != RCC_SYSCLKSOURCE_STATUS_PLLCLK)
+  {
+    return "NONE";
+  }
+  return ((RCC->CFGR & RCC_CFGR_PLLSRC) != 0U) ? "HSE" : "HSI_DIV2";
+}
+
+static void print_clock(void)
+{
+  DebugUart_Printf("clock src=%s pll=%s sys=%luHz hclk=%luHz pclk1=%luHz pclk2=%luHz fallback=%lu\r\n",
+                   sysclk_source_name(),
+                   pll_source_name(),
+                   (unsigned long)HAL_RCC_GetSysClockFreq(),
+                   (unsigned long)HAL_RCC_GetHCLKFreq(),
+                   (unsigned long)HAL_RCC_GetPCLK1Freq(),
+                   (unsigned long)HAL_RCC_GetPCLK2Freq(),
+                   (unsigned long)AppClock_IsHsiFallback());
 }
 
 static void print_status(void)
@@ -64,9 +104,10 @@ static void print_tasks(void)
 
 static void print_heap(void)
 {
-  DebugUart_Printf("heap free=%lu min=%lu\r\n",
+  DebugUart_Printf("heap free=%lu min=%lu rxdrop=%lu\r\n",
                    (unsigned long)xPortGetFreeHeapSize(),
-                   (unsigned long)xPortGetMinimumEverFreeHeapSize());
+                   (unsigned long)xPortGetMinimumEverFreeHeapSize(),
+                   (unsigned long)DebugUart_RxDropped());
 }
 
 static void scan_i2c(void)
@@ -128,7 +169,7 @@ static void print_rc(void)
                    rc.arm_switch ? 1U : 0U,
                    rc.baro_mode ? 1U : 0U,
                    (unsigned long)(HAL_GetTick() - rc.last_update_ms));
-  DebugUart_Printf("stick r=%d p=%d y=%d t=%u raw=%d,%d,%d,%d,%d,%d\r\n",
+  DebugUart_Printf("stick r=%d p=%d y=%d t=%u raw=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
                    rc.roll,
                    rc.pitch,
                    rc.yaw,
@@ -138,7 +179,22 @@ static void print_rc(void)
                    rc.ch[2],
                    rc.ch[3],
                    rc.ch[4],
-                   rc.ch[5]);
+                   rc.ch[5],
+                   rc.ch[6],
+                   rc.ch[7],
+                   rc.ch[8],
+                   rc.ch[9],
+                   rc.ch[10],
+                   rc.ch[11],
+                   rc.ch[12],
+                   rc.ch[13],
+                   rc.ch[14],
+                   rc.ch[15]);
+}
+
+static void print_rcmap(void)
+{
+  DebugUart_WriteLine("rcmap order=AETR roll=CH1 pitch=CH2 throttle=CH3 yaw=CH4 arm=CH5 baro=CH6 raw_min=172 raw_mid=992 raw_max=1811");
 }
 
 static void print_batt(void)
@@ -219,14 +275,29 @@ static void cmd_motor(char *arg1, char *arg2)
 {
   if (arg1 == NULL)
   {
-    DebugUart_WriteLine("usage: motor unlock|stop|<1-4> <permille>");
+    DebugUart_WriteLine("usage: motor unlock|unlock bench|stop|<1-4> <permille>");
     return;
   }
 
   if (strcmp(arg1, "unlock") == 0)
   {
-    Safety_MotorTestUnlock(BOARD_MOTOR_TEST_WINDOW_MS);
-    DebugUart_WriteLine("motor test unlocked for 5s if safety is ok");
+    bool bench = (arg2 != NULL) && (strcmp(arg2, "bench") == 0);
+    if (bench)
+    {
+      Safety_MotorTestBenchUnlock(BOARD_MOTOR_TEST_WINDOW_MS);
+    }
+    else
+    {
+      Safety_MotorTestUnlock(BOARD_MOTOR_TEST_WINDOW_MS);
+    }
+    if (Safety_CanMotorTest())
+    {
+      DebugUart_Printf("motor test unlocked bench=%u\r\n", bench ? 1U : 0U);
+    }
+    else
+    {
+      DebugUart_WriteLine("motor test unlock denied: disarm, valid RC, no failsafe, battery ok");
+    }
     return;
   }
 
@@ -291,6 +362,10 @@ static void execute_line(char *line)
   {
     print_status();
   }
+  else if (strcmp(cmd, "clock") == 0)
+  {
+    print_clock();
+  }
   else if (strcmp(cmd, "tasks") == 0)
   {
     print_tasks();
@@ -314,6 +389,10 @@ static void execute_line(char *line)
   else if (strcmp(cmd, "rc") == 0)
   {
     print_rc();
+  }
+  else if (strcmp(cmd, "rcmap") == 0)
+  {
+    print_rcmap();
   }
   else if (strcmp(cmd, "batt") == 0)
   {
@@ -347,12 +426,6 @@ static void execute_line(char *line)
     App_SetTelemetryLog(on);
     DebugUart_Printf("log=%u\r\n", on ? 1U : 0U);
   }
-  else if (strcmp(cmd, "hb") == 0)
-  {
-    bool on = (a1 == NULL) || (strcmp(a1, "off") != 0);
-    App_SetHeartbeat(on);
-    DebugUart_Printf("hb=%u\r\n", on ? 1U : 0U);
-  }
   else if (strcmp(cmd, "reboot") == 0)
   {
     DebugUart_WriteLine("rebooting");
@@ -370,6 +443,7 @@ void Cli_TaskLoop(void)
   char line[96];
   uint8_t pos = 0U;
   uint8_t ch;
+  bool skip_lf = false;
 
   DebugUart_Write("> ");
   for (;;)
@@ -378,6 +452,13 @@ void Cli_TaskLoop(void)
     {
       continue;
     }
+
+    if ((ch == '\n') && skip_lf)
+    {
+      skip_lf = false;
+      continue;
+    }
+    skip_lf = (ch == '\r');
 
     if ((ch == '\r') || (ch == '\n'))
     {
@@ -398,7 +479,6 @@ void Cli_TaskLoop(void)
     else if ((ch >= 32U) && (ch < 127U) && (pos < (sizeof(line) - 1U)))
     {
       line[pos++] = (char)ch;
-      (void)HAL_UART_Transmit(&huart1, &ch, 1U, 20U);
     }
   }
 }

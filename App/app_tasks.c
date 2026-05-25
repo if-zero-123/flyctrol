@@ -199,15 +199,9 @@ static void TelemetryTask(void *argument)
 {
   (void)argument;
   TickType_t last = xTaskGetTickCount();
-  uint8_t heartbeat_divider = 0U;
   for (;;)
   {
     Telemetry_PrintOnce();
-    if (++heartbeat_divider >= 5U)
-    {
-      heartbeat_divider = 0U;
-      Telemetry_PrintHeartbeat();
-    }
     vTaskDelayUntil(&last, pdMS_TO_TICKS(200U));
   }
 }

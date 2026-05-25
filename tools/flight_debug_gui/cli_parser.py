@@ -24,10 +24,19 @@ class FlightCliParser:
             "attitude": {},
             "baro": {},
             "rc": {},
+            "rcmap": {
+                "order": "AETR",
+                "roll": "CH1",
+                "pitch": "CH2",
+                "throttle": "CH3",
+                "yaw": "CH4",
+                "arm": "CH5",
+                "baro": "CH6",
+            },
             "battery": {},
             "i2c": {},
             "heap": {},
-            "heartbeat": {},
+            "clock": {},
             "pid": {},
             "motors": {},
             "last_line": "",
@@ -83,6 +92,9 @@ class FlightCliParser:
             self._parse_rc_status(text)
             self._add_snapshot()
             return
+        if text.startswith("rcmap "):
+            self._parse_rcmap(text)
+            return
         if text.startswith("stick "):
             self._parse_rc_sticks(text)
             self._add_snapshot()
@@ -94,9 +106,8 @@ class FlightCliParser:
         if text.startswith("heap free="):
             self._parse_heap(text)
             return
-        if text.startswith("hb tick="):
-            self._parse_heartbeat(text)
-            self._add_snapshot()
+        if text.startswith("clock src="):
+            self._parse_clock(text)
             return
         if text.startswith(("roll kp=", "pitch kp=", "yaw kp=")):
             self._parse_pid(text)
@@ -248,6 +259,11 @@ class FlightCliParser:
         )
         self.state["rc"] = rc
 
+    def _parse_rcmap(self, text: str) -> None:
+        pairs = dict(re.findall(r"(\w+)=([A-Za-z0-9_]+)", text))
+        if pairs:
+            self.state["rcmap"] = pairs
+
     def _parse_battery(self, text: str) -> None:
         m = re.search(r"batt raw=(\d+) voltage=(\d+)mV percent=(\d+) low=(\d+) critical=(\d+)", text)
         if not m:
@@ -261,39 +277,31 @@ class FlightCliParser:
         }
 
     def _parse_heap(self, text: str) -> None:
-        m = re.search(r"heap free=(\d+) min=(\d+)", text)
+        m = re.search(r"heap free=(\d+) min=(\d+)(?: rxdrop=(\d+))?", text)
         if m:
-            self.state["heap"] = {"free": int(m.group(1)), "min": int(m.group(2))}
+            self.state["heap"] = {
+                "free": int(m.group(1)),
+                "min": int(m.group(2)),
+                "rxdrop": int(m.group(3) or 0),
+            }
 
-    def _parse_heartbeat(self, text: str) -> None:
+    def _parse_clock(self, text: str) -> None:
         m = re.search(
-            r"hb tick=(\d+)ms heap=(\d+) arm=(\d+) fs=(\d+) rc=(\d+) "
-            r"imu=(\d+) baro=(\d+) thr=(\d+) batt=(\d+)mV",
+            r"clock src=([A-Z0-9_]+) pll=([A-Z0-9_]+) sys=(\d+)Hz "
+            r"hclk=(\d+)Hz pclk1=(\d+)Hz pclk2=(\d+)Hz fallback=(\d+)",
             text,
         )
         if not m:
             return
-        self.state["heartbeat"] = {
-            "tick_ms": int(m.group(1)),
-            "heap": int(m.group(2)),
+        self.state["clock"] = {
+            "src": m.group(1),
+            "pll": m.group(2),
+            "sys_hz": int(m.group(3)),
+            "hclk_hz": int(m.group(4)),
+            "pclk1_hz": int(m.group(5)),
+            "pclk2_hz": int(m.group(6)),
+            "fallback": bool(int(m.group(7))),
         }
-        self.state["heap"] = {"free": int(m.group(2)), "min": self._dict("heap").get("min", "")}
-        status = self._dict("status")
-        status.update(
-            {
-                "uptime_ms": int(m.group(1)),
-                "armed": bool(int(m.group(3))),
-                "failsafe": bool(int(m.group(4))),
-                "rc_ok": bool(int(m.group(5))),
-                "imu_ok": bool(int(m.group(6))),
-                "baro_ok": bool(int(m.group(7))),
-                "throttle": int(m.group(8)),
-            }
-        )
-        self.state["status"] = status
-        batt = self._dict("battery")
-        batt["voltage_mv"] = int(m.group(9))
-        self.state["battery"] = batt
 
     def _parse_pid(self, text: str) -> None:
         m = re.search(r"(roll|pitch|yaw) kp=(-?\d+) ki=(-?\d+) kd=(-?\d+) milli", text)

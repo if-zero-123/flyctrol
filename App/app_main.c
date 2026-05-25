@@ -19,7 +19,6 @@
 #include "topic.h"
 
 static bool s_telemetry_log;
-static bool s_heartbeat = true;
 
 void App_Start(void)
 {
@@ -77,14 +76,4 @@ void App_SetTelemetryLog(bool enabled)
 bool App_GetTelemetryLog(void)
 {
   return s_telemetry_log;
-}
-
-void App_SetHeartbeat(bool enabled)
-{
-  s_heartbeat = enabled;
-}
-
-bool App_GetHeartbeat(void)
-{
-  return s_heartbeat;
 }

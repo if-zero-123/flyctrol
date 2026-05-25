@@ -781,6 +781,11 @@ void AppBootStage_Set(uint32_t stage)
   s_boot_stage = stage;
 }
 
+uint32_t AppClock_IsHsiFallback(void)
+{
+  return s_clock_hsi_fallback;
+}
+
 void vApplicationMallocFailedHook(void)
 {
   s_boot_stage = 30U;

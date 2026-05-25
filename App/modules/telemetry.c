@@ -1,11 +1,8 @@
 #include "telemetry.h"
 
-#include "FreeRTOS.h"
 #include "app_main.h"
-#include "board_time.h"
 #include "debug_uart.h"
 #include "motor_pwm.h"
-#include "task.h"
 #include "topic.h"
 
 static int32_t deg_to_cdeg(float deg)
@@ -31,29 +28,6 @@ void Telemetry_PrintBoot(void)
   DebugUart_WriteLine("");
   DebugUart_WriteLine("NAZE32 custom firmware boot");
   DebugUart_WriteLine("CLI ready: type help");
-}
-
-void Telemetry_PrintHeartbeat(void)
-{
-  if (!App_GetHeartbeat())
-  {
-    return;
-  }
-
-  flight_status_t st = Topic_GetStatus();
-  app_rc_t rc = Topic_GetRc();
-  battery_status_t batt = Topic_GetBattery();
-
-  DebugUart_Printf("hb tick=%lums heap=%lu arm=%u fs=%u rc=%u imu=%u baro=%u thr=%u batt=%umV\r\n",
-                   (unsigned long)BoardTime_Millis(),
-                   (unsigned long)xPortGetFreeHeapSize(),
-                   st.armed ? 1U : 0U,
-                   st.failsafe ? 1U : 0U,
-                   rc.connected ? 1U : 0U,
-                   st.imu_ok ? 1U : 0U,
-                   st.baro_ok ? 1U : 0U,
-                   rc.throttle,
-                   batt.voltage_mv);
 }
 
 void Telemetry_PrintOnce(void)

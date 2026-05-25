@@ -3,6 +3,5 @@
 
 void Telemetry_PrintOnce(void);
 void Telemetry_PrintBoot(void);
-void Telemetry_PrintHeartbeat(void);
 
 #endif /* APP_TELEMETRY_H */
