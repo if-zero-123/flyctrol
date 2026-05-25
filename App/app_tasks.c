@@ -32,74 +32,34 @@ static void BatteryTask(void *argument);
 static void TelemetryTask(void *argument);
 static void CliTask(void *argument);
 
-typedef struct {
-  TaskFunction_t fn;
-  const char *name;
-  uint16_t stack_words;
-  UBaseType_t priority;
-  uint32_t fail_stage;
-  StaticTask_t *tcb;
-  StackType_t *stack;
-} static_task_slot_t;
-
-static StaticTask_t s_stabilizer_tcb;
-static StackType_t s_stabilizer_stack[256];
-static StaticTask_t s_crsf_tcb;
-static StackType_t s_crsf_stack[160];
-static StaticTask_t s_safety_tcb;
-static StackType_t s_safety_stack[128];
-static StaticTask_t s_baro_tcb;
-static StackType_t s_baro_stack[160];
-static StaticTask_t s_battery_tcb;
-static StackType_t s_battery_stack[128];
-static StaticTask_t s_telem_tcb;
-static StackType_t s_telem_stack[160];
-static StaticTask_t s_cli_tcb;
-static StackType_t s_cli_stack[384];
-
-static static_task_slot_t s_task_slots[] = {
-  {StabilizerTask, "stabilize", 256U, 5U, 51U, &s_stabilizer_tcb, s_stabilizer_stack},
-  {CrsfTask, "crsf", 160U, 6U, 52U, &s_crsf_tcb, s_crsf_stack},
-  {SafetyTask, "safety", 128U, 4U, 53U, &s_safety_tcb, s_safety_stack},
-  {BaroTask, "baro", 160U, 3U, 54U, &s_baro_tcb, s_baro_stack},
-  {BatteryTask, "battery", 128U, 2U, 55U, &s_battery_tcb, s_battery_stack},
-  {TelemetryTask, "telem", 160U, 1U, 56U, &s_telem_tcb, s_telem_stack},
-  {CliTask, "cli", 384U, 1U, 57U, &s_cli_tcb, s_cli_stack},
-};
-
 static float absf_local(float v)
 {
   return (v < 0.0f) ? -v : v;
 }
 
-static void create_static_task(static_task_slot_t *slot)
+static void create_task(TaskFunction_t fn,
+                        const char *name,
+                        uint16_t stack_words,
+                        UBaseType_t priority,
+                        uint32_t fail_stage)
 {
-  if ((slot == NULL) || (slot->tcb == NULL) || (slot->stack == NULL))
+  if (xTaskCreate(fn, name, stack_words, NULL, priority, NULL) != pdPASS)
   {
-    AppBootStage_Set((slot == NULL) ? 50U : slot->fail_stage);
-    Error_Handler();
-  }
-  TaskHandle_t handle = xTaskCreateStatic(slot->fn,
-                                          slot->name,
-                                          slot->stack_words,
-                                          NULL,
-                                          slot->priority,
-                                          slot->stack,
-                                          slot->tcb);
-  if (handle == NULL)
-  {
-    DebugUart_Printf("task create failed: %s\r\n", slot->name);
-    AppBootStage_Set(slot->fail_stage);
+    DebugUart_Printf("task create failed: %s\r\n", name);
+    AppBootStage_Set(fail_stage);
     Error_Handler();
   }
 }
 
 void App_CreateTasks(void)
 {
-  for (uint8_t i = 0U; i < (sizeof(s_task_slots) / sizeof(s_task_slots[0])); i++)
-  {
-    create_static_task(&s_task_slots[i]);
-  }
+  create_task(StabilizerTask, "stabilize", 256U, 5U, 51U);
+  create_task(CrsfTask, "crsf", 160U, 6U, 52U);
+  create_task(SafetyTask, "safety", 128U, 4U, 53U);
+  create_task(BaroTask, "baro", 160U, 3U, 54U);
+  create_task(BatteryTask, "battery", 128U, 2U, 55U);
+  create_task(TelemetryTask, "telem", 160U, 1U, 56U);
+  create_task(CliTask, "cli", 384U, 1U, 57U);
 }
 
 static void StabilizerTask(void *argument)

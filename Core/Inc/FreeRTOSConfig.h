@@ -56,7 +56,7 @@
 #define configENABLE_MPU                         0
 
 #define configUSE_PREEMPTION                     1
-#define configSUPPORT_STATIC_ALLOCATION          1
+#define configSUPPORT_STATIC_ALLOCATION          0
 #define configSUPPORT_DYNAMIC_ALLOCATION         1
 #define configUSE_IDLE_HOOK                      0
 #define configUSE_TICK_HOOK                      0
@@ -64,7 +64,7 @@
 #define configTICK_RATE_HZ                       ((TickType_t)1000)
 #define configMAX_PRIORITIES                     ( 7 )
 #define configMINIMAL_STACK_SIZE                 ((uint16_t)128)
-#define configTOTAL_HEAP_SIZE                    ((size_t)5120)
+#define configTOTAL_HEAP_SIZE                    ((size_t)12288)
 #define configMAX_TASK_NAME_LEN                  ( 12 )
 #define configUSE_TRACE_FACILITY                 1
 #define configUSE_STATS_FORMATTING_FUNCTIONS     1
