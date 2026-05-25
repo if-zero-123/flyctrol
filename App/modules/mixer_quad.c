@@ -38,12 +38,30 @@ static void normalize_to_range(float motor_out[4], float idle, float max_out, fl
 
   float span = max_v - min_v;
   float available = max_out - idle;
+  float max_spread = (float)BOARD_MOTOR_MAX_SPREAD_PERMILLE / 1000.0f;
+  if (max_spread < available)
+  {
+    available = max_spread;
+  }
   if ((span > available) && (span > 0.0001f))
   {
     float scale = available / span;
     for (uint8_t i = 0U; i < 4U; i++)
     {
       motor_out[i] = throttle + ((motor_out[i] - throttle) * scale);
+    }
+    min_v = motor_out[0];
+    max_v = motor_out[0];
+    for (uint8_t i = 1U; i < 4U; i++)
+    {
+      if (motor_out[i] < min_v)
+      {
+        min_v = motor_out[i];
+      }
+      if (motor_out[i] > max_v)
+      {
+        max_v = motor_out[i];
+      }
     }
   }
   else if (throttle >= 0.50f)
