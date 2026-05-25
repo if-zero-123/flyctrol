@@ -163,14 +163,12 @@ static void print_status(void)
                    BOARD_ARM_SWITCH_DEBOUNCE_MS,
                    BOARD_ARM_THROTTLE_MAX,
                    BOARD_BATT_CRITICAL_MV);
-  DebugUart_Printf("flight_core airmode=%s start_thr=%u crash_disarm=%u crash_angle=%lddeg crash_gyro=%lddps hold=%ums arm_lost_hold=%ums\r\n",
+  DebugUart_Printf("flight_core airmode=%s start_thr=%u crash_angle=%lddeg crash_gyro=%lddps hold=%ums\r\n",
                    onoff(BOARD_AIRMODE_ENABLE),
                    BOARD_AIRMODE_START_THROTTLE,
-                   BOARD_CRASH_DISARM_ENABLE,
                    (long)BOARD_CRASH_ANGLE_DEG,
                    (long)BOARD_CRASH_GYRO_DPS,
-                   BOARD_CRASH_HOLD_MS,
-                   BOARD_INFLIGHT_ARM_LOST_HOLD_MS);
+                   BOARD_CRASH_HOLD_MS);
   DebugUart_Printf("control_profile angle=%lddeg level_gain=%ld/10 max_rate=%lddps yaw_rate=%lddps expo=%u%%\r\n",
                    (long)BOARD_MAX_ANGLE_DEG,
                    (long)(BOARD_LEVEL_GAIN_DPS_PER_DEG * 10.0f),

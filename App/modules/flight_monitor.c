@@ -21,7 +21,6 @@ typedef struct {
   uint16_t max_throttle;
   uint16_t max_motor;
   uint16_t max_motor_spread;
-  uint16_t min_heap_free;
   bool althold_seen;
   int32_t min_baro_alt_cm;
   int32_t max_baro_alt_cm;
@@ -64,7 +63,6 @@ static void begin_flight(uint32_t now)
   s_summary.start_ms = now;
   s_summary.end_ms = now;
   s_summary.min_batt_mv = 65535U;
-  s_summary.min_heap_free = 65535U;
   s_summary.min_baro_alt_cm = 2147483647L;
   s_summary.max_baro_alt_cm = -2147483647L;
 }
@@ -124,13 +122,6 @@ void FlightMonitor_Update(const flight_status_t *status)
     if (status->throttle_permille > s_summary.max_throttle)
     {
       s_summary.max_throttle = status->throttle_permille;
-    }
-    {
-      size_t heap_free = xPortGetFreeHeapSize();
-      if (heap_free < s_summary.min_heap_free)
-      {
-        s_summary.min_heap_free = (heap_free > 65535U) ? 65535U : (uint16_t)heap_free;
-      }
     }
     if (max_motor > s_summary.max_motor)
     {
@@ -207,6 +198,4 @@ void FlightMonitor_Print(void)
                    (long)((s.max_baro_alt_cm == -2147483647L) ? 0 : s.max_baro_alt_cm),
                    s.max_abs_baro_vel_cms,
                    s.max_abs_alt_out_permille);
-  DebugUart_Printf("flight min_heap=%u bytes\r\n",
-                   (s.min_heap_free == 65535U) ? 0U : s.min_heap_free);
 }
