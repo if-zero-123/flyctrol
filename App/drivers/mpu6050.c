@@ -209,6 +209,11 @@ bool Mpu6050_CalibrateImu(uint16_t samples)
   return gyro_ok && accel_ok;
 }
 
+void Mpu6050_ResetFilters(void)
+{
+  s_filter_ready = false;
+}
+
 bool Mpu6050_Read(imu_sample_t *out)
 {
   if (out == NULL)

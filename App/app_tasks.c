@@ -64,6 +64,7 @@ static void StabilizerTask(void *argument)
   const TickType_t period = pdMS_TO_TICKS(2U);
   uint32_t last_imu_retry_ms = 0U;
   bool airmode_latched = false;
+  bool previous_armed = false;
 
   for (;;)
   {
@@ -100,6 +101,21 @@ static void StabilizerTask(void *argument)
     Safety_Update();
     flight_status_t status = Safety_GetStatus();
     baro_sample_t baro = Topic_GetBaro();
+    if (status.armed && !previous_armed)
+    {
+      ControllerAttitude_Reset();
+      MixerQuad_ResetThrottleRamp();
+      Mpu6050_ResetFilters();
+    }
+    else if (!status.armed && previous_armed)
+    {
+      ControllerAttitude_Reset();
+      MixerQuad_ResetThrottleRamp();
+      Mpu6050_ResetFilters();
+      EstimatorAttitude_Init();
+    }
+    previous_armed = status.armed;
+
     if (!status.armed)
     {
       airmode_latched = false;

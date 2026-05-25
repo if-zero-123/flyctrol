@@ -138,6 +138,12 @@ static void print_status(void)
                    (long)BOARD_CRASH_ANGLE_DEG,
                    (long)BOARD_CRASH_GYRO_DPS,
                    BOARD_CRASH_HOLD_MS);
+  DebugUart_Printf("control_profile angle=%lddeg level_gain=%ld/10 max_rate=%lddps yaw_rate=%lddps expo=%u%%\r\n",
+                   (long)BOARD_MAX_ANGLE_DEG,
+                   (long)(BOARD_LEVEL_GAIN_DPS_PER_DEG * 10.0f),
+                   (long)BOARD_MAX_LEVEL_RATE_DPS,
+                   (long)BOARD_MAX_YAW_RATE_DPS,
+                   BOARD_RC_EXPO_PERCENT);
 }
 
 static void print_tasks(void)
