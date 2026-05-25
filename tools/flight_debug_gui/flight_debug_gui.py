@@ -881,6 +881,7 @@ class FlightDebugGui(tk.Tk):
         status = s.get("status", {})
         imu = s.get("imu", {})
         baro = s.get("baro", {})
+        althold = s.get("althold", {})
         rc = s.get("rc", {})
         batt = s.get("battery", {})
         att = s.get("attitude", {})

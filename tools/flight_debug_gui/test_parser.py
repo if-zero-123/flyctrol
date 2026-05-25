@@ -2,6 +2,7 @@
 import unittest
 
 from cli_parser import FlightCliParser
+from flight_debug_gui import FlightDebugGui
 
 
 SAMPLE = """
@@ -57,6 +58,49 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(state["pid"]["roll"]["kp"], 3500)
         self.assertEqual(state["motors"]["m"], [0, 0, 0, 0])
         self.assertGreater(len(parser.rows), 0)
+
+
+class _FakeVar:
+    def __init__(self) -> None:
+        self.value = None
+
+    def set(self, value: str) -> None:
+        self.value = value
+
+
+class _FakeParser:
+    def latest(self) -> dict:
+        parser = FlightCliParser()
+        parser.parse_lines(SAMPLE.splitlines())
+        return parser.latest()
+
+
+class GuiRefreshTest(unittest.TestCase):
+    def test_refresh_monitor_uses_althold_state_without_tk_window(self) -> None:
+        gui = object.__new__(FlightDebugGui)
+        gui.parser = _FakeParser()
+        gui.monitor_vars = {
+            key: _FakeVar()
+            for key in (
+                "armed",
+                "failsafe",
+                "rc",
+                "imu",
+                "baro",
+                "althold",
+                "battery",
+                "att",
+                "baro_detail",
+                "sticks",
+                "motors",
+            )
+        }
+
+        FlightDebugGui._refresh_monitor(gui)
+
+        self.assertIn("req=1", gui.monitor_vars["althold"].value)
+        self.assertIn("ready=1", gui.monitor_vars["althold"].value)
+        self.assertIn("active=0", gui.monitor_vars["althold"].value)
 
 
 if __name__ == "__main__":
