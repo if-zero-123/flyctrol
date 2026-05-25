@@ -306,7 +306,9 @@ class FlightCliParser:
         }
 
     def _parse_pid(self, text: str) -> None:
-        m = re.search(r"(roll|pitch|yaw) kp=(-?\d+) ki=(-?\d+) kd=(-?\d+) milli", text)
+        m = re.search(r"(roll|pitch|yaw) bf P=(\d+) I=(\d+) D=(\d+)", text)
+        if not m:
+            m = re.search(r"(roll|pitch|yaw) kp=(-?\d+) ki=(-?\d+) kd=(-?\d+) milli", text)
         if not m:
             return
         pid = self._dict("pid")

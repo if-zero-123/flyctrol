@@ -7,6 +7,7 @@ typedef struct {
   float kd;
   float integrator;
   float previous_error;
+  float previous_measurement;
   float out_min;
   float out_max;
   float i_min;

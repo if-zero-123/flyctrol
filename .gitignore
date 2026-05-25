@@ -9,6 +9,7 @@
 /bin
 /obj
 /out
+/external
 
 # python cache
 __pycache__/

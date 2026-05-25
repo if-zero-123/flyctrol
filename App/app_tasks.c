@@ -123,6 +123,7 @@ static void StabilizerTask(void *argument)
     }
     else if (!Safety_CanMotorTest())
     {
+      MixerQuad_ResetThrottleRamp();
       MotorPwm_SetAll(0.0f);
     }
 

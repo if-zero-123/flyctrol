@@ -11,6 +11,16 @@ typedef enum {
   PID_AXIS_YAW = 2
 } pid_axis_t;
 
+typedef struct {
+  int16_t rate_setpoint_dps[3];
+  int16_t gyro_dps[3];
+  int16_t error_dps[3];
+  int16_t p_milli[3];
+  int16_t i_milli[3];
+  int16_t d_milli[3];
+  int16_t output_milli[3];
+} controller_attitude_debug_t;
+
 void ControllerAttitude_Init(void);
 void ControllerAttitude_Update(const attitude_t *attitude,
                                const imu_sample_t *imu,
@@ -22,5 +32,9 @@ void ControllerAttitude_SetYawGyroDirection(int8_t direction);
 int8_t ControllerAttitude_GetYawGyroDirection(void);
 bool ControllerAttitude_SetPid(pid_axis_t axis, float kp, float ki, float kd);
 bool ControllerAttitude_GetPid(pid_axis_t axis, app_pid_t *out);
+bool ControllerAttitude_SetBfPid(pid_axis_t axis, uint8_t p, uint8_t i, uint8_t d);
+bool ControllerAttitude_GetBfPid(pid_axis_t axis, uint8_t *p, uint8_t *i, uint8_t *d);
+void ControllerAttitude_UseBfDefaults(void);
+void ControllerAttitude_GetDebug(controller_attitude_debug_t *out);
 
 #endif /* APP_CONTROLLER_ATTITUDE_H */

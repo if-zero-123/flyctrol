@@ -24,6 +24,7 @@ void Pid_Init(app_pid_t *pid, float kp, float ki, float kd, float out_min, float
   pid->kd = kd;
   pid->integrator = 0.0f;
   pid->previous_error = 0.0f;
+  pid->previous_measurement = 0.0f;
   pid->out_min = out_min;
   pid->out_max = out_max;
   pid->i_min = out_min;
@@ -38,6 +39,7 @@ void Pid_Reset(app_pid_t *pid)
   }
   pid->integrator = 0.0f;
   pid->previous_error = 0.0f;
+  pid->previous_measurement = 0.0f;
 }
 
 float Pid_Update(app_pid_t *pid, float setpoint, float measurement, float dt_s)

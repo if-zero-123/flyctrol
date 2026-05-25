@@ -201,7 +201,7 @@ class FakeSerialBackend(SerialBackend):
                 "cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag\r\n"
                 "cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]\r\n"
                 "cmd: motoridle [0-200], motormax [700-1000], motor unlock|stop|<1-4> <permille>\r\n"
-                "cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]\r\n"
+                "cmd: pid [roll|pitch|yaw <P> <I> <D>|default] uses BF-style units\r\n"
                 "cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm log on|off reboot",
                 logging,
             )
@@ -241,7 +241,10 @@ class FakeSerialBackend(SerialBackend):
                 "control status arm=0 fs=0 flags=0x0000 rc=1 imu=1 imu_age=2ms yawdir=-1\r\n"
                 "control sp_cd r=0 p=0 yawrate_cdps=0 thr=0 baro=0\r\n"
                 "control att_cd r=24 p=-16 y=110 healthy=1\r\n"
+                "control trim_cd r=0 p=0\r\n"
                 "control out_milli r=0 p=0 y=0 alt=0\r\n"
+                "control rate_sp_dps r=0 p=0 y=0 gyro_dps r=0 p=0 y=0\r\n"
+                "control pid_milli r=0,0,0 p=0,0,0 y=0,0,0\r\n"
                 "control mot_permille M1=0 M2=0 M3=0 M4=0"
             ), logging
         if cmd.startswith("yawdir"):
@@ -272,7 +275,11 @@ class FakeSerialBackend(SerialBackend):
         if cmd == "tasks":
             return "name          state prio stack num\r\nstabilize     B     5    92    1\r\ncli           R     1    211   7", logging
         if cmd == "pid":
-            return "roll kp=3500 ki=0 kd=45 milli\r\npitch kp=3500 ki=0 kd=45 milli\r\nyaw kp=1800 ki=0 kd=0 milli", logging
+            return (
+                "roll bf P=60 I=70 D=17 gain kp=1921u ki=17106u kd=8u\r\n"
+                "pitch bf P=80 I=90 D=18 gain kp=2562u ki=21994u kd=9u\r\n"
+                "yaw bf P=200 I=45 D=0 gain kp=6405u ki=10997u kd=0u"
+            ), logging
         if cmd.startswith("pid "):
             return "pid ok", logging
         if cmd == "motor unlock":

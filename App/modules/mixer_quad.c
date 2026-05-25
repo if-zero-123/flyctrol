@@ -4,6 +4,8 @@
 
 static uint16_t s_motor_idle_permille = BOARD_MOTOR_IDLE_PERMILLE;
 static uint16_t s_motor_max_permille = BOARD_MOTOR_MAX_PERMILLE;
+static uint16_t s_throttle_ramped_permille;
+static bool s_throttle_ramp_ready;
 
 static float clampf_local(float v, float min_v, float max_v)
 {
@@ -103,6 +105,36 @@ uint16_t MixerQuad_GetMotorMaxPermille(void)
   return s_motor_max_permille;
 }
 
+void MixerQuad_ResetThrottleRamp(void)
+{
+  s_throttle_ramped_permille = 0U;
+  s_throttle_ramp_ready = false;
+}
+
+static uint16_t slew_throttle(uint16_t throttle_permille)
+{
+  if (!s_throttle_ramp_ready)
+  {
+    s_throttle_ramped_permille = throttle_permille;
+    s_throttle_ramp_ready = true;
+    return s_throttle_ramped_permille;
+  }
+
+  if (throttle_permille <= s_throttle_ramped_permille)
+  {
+    s_throttle_ramped_permille = throttle_permille;
+    return s_throttle_ramped_permille;
+  }
+
+  uint16_t delta = (uint16_t)(throttle_permille - s_throttle_ramped_permille);
+  if (delta > BOARD_THROTTLE_SLEW_PER_LOOP)
+  {
+    delta = BOARD_THROTTLE_SLEW_PER_LOOP;
+  }
+  s_throttle_ramped_permille = (uint16_t)(s_throttle_ramped_permille + delta);
+  return s_throttle_ramped_permille;
+}
+
 void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, float motor_out[4])
 {
   if ((control == 0) || (motor_out == 0))
@@ -129,6 +161,7 @@ void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, 
   {
     throttle = (int32_t)s_motor_max_permille;
   }
+  throttle = (int32_t)slew_throttle((uint16_t)throttle);
 
   float idle = (float)idle_permille / 1000.0f;
   float max_out = (float)s_motor_max_permille / 1000.0f;

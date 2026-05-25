@@ -26,9 +26,9 @@ static int32_t deg_to_cdeg(float deg)
   return (int32_t)(deg * 100.0f);
 }
 
-static int32_t gain_to_milli(float gain)
+static int32_t gain_to_micro(float gain)
 {
-  return (int32_t)(gain * 1000.0f);
+  return (int32_t)(gain * 1000000.0f);
 }
 
 static int32_t float_to_milli(float value)
@@ -54,7 +54,7 @@ static void print_help(void)
   DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
   DebugUart_WriteLine("cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]");
   DebugUart_WriteLine("cmd: motoridle [0-200], motormax [700-1000], motor unlock|stop|<1-4> <permille>");
-  DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]");
+  DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <P> <I> <D>|default] uses BF-style units");
   DebugUart_WriteLine("cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm log on|off reboot");
 }
 
@@ -292,10 +292,12 @@ static void print_control(void)
   flight_status_t st = Topic_GetStatus();
   attitude_t att = Topic_GetAttitude();
   imu_sample_t imu = Topic_GetImu();
+  controller_attitude_debug_t dbg;
   int8_t yawdir = ControllerAttitude_GetYawGyroDirection();
   float trim_roll = 0.0f;
   float trim_pitch = 0.0f;
   EstimatorAttitude_GetTrim(&trim_roll, &trim_pitch);
+  ControllerAttitude_GetDebug(&dbg);
 
   DebugUart_Printf("control status arm=%u fs=%u flags=0x%04X rc=%u imu=%u imu_age=%lums yawdir=%d\r\n",
                    st.armed ? 1U : 0U,
@@ -324,6 +326,23 @@ static void print_control(void)
                    (long)float_to_milli(st.control.pitch),
                    (long)float_to_milli(st.control.yaw),
                    st.control.altitude_permille);
+  DebugUart_Printf("control rate_sp_dps r=%d p=%d y=%d gyro_dps r=%d p=%d y=%d\r\n",
+                   dbg.rate_setpoint_dps[PID_AXIS_ROLL],
+                   dbg.rate_setpoint_dps[PID_AXIS_PITCH],
+                   dbg.rate_setpoint_dps[PID_AXIS_YAW],
+                   dbg.gyro_dps[PID_AXIS_ROLL],
+                   dbg.gyro_dps[PID_AXIS_PITCH],
+                   dbg.gyro_dps[PID_AXIS_YAW]);
+  DebugUart_Printf("control pid_milli r=%d,%d,%d p=%d,%d,%d y=%d,%d,%d\r\n",
+                   dbg.p_milli[PID_AXIS_ROLL],
+                   dbg.i_milli[PID_AXIS_ROLL],
+                   dbg.d_milli[PID_AXIS_ROLL],
+                   dbg.p_milli[PID_AXIS_PITCH],
+                   dbg.i_milli[PID_AXIS_PITCH],
+                   dbg.d_milli[PID_AXIS_PITCH],
+                   dbg.p_milli[PID_AXIS_YAW],
+                   dbg.i_milli[PID_AXIS_YAW],
+                   dbg.d_milli[PID_AXIS_YAW]);
   DebugUart_Printf("control mot_permille M1=%ld M2=%ld M3=%ld M4=%ld\r\n",
                    (long)duty_to_permille(st.motor[0]),
                    (long)duty_to_permille(st.motor[1]),
@@ -489,13 +508,20 @@ static bool parse_axis(const char *name, pid_axis_t *axis)
 static void print_pid_axis(pid_axis_t axis, const char *name)
 {
   app_pid_t pid;
+  uint8_t p = 0U;
+  uint8_t i = 0U;
+  uint8_t d = 0U;
   if (ControllerAttitude_GetPid(axis, &pid))
   {
-    DebugUart_Printf("%s kp=%ld ki=%ld kd=%ld milli\r\n",
+    (void)ControllerAttitude_GetBfPid(axis, &p, &i, &d);
+    DebugUart_Printf("%s bf P=%u I=%u D=%u gain kp=%ldu ki=%ldu kd=%ldu\r\n",
                      name,
-                     (long)gain_to_milli(pid.kp),
-                     (long)gain_to_milli(pid.ki),
-                     (long)gain_to_milli(pid.kd));
+                     p,
+                     i,
+                     d,
+                     (long)gain_to_micro(pid.kp),
+                     (long)gain_to_micro(pid.ki),
+                     (long)gain_to_micro(pid.kd));
   }
 }
 
@@ -510,18 +536,33 @@ static void cmd_pid(char *axis_name, char *kp_s, char *ki_s, char *kd_s)
     return;
   }
 
-  if (!parse_axis(axis_name, &axis) || (kp_s == NULL) || (ki_s == NULL) || (kd_s == NULL))
+  if (strcmp(axis_name, "default") == 0)
   {
-    DebugUart_WriteLine("usage: pid roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>");
+    ControllerAttitude_UseBfDefaults();
+    DebugUart_WriteLine("pid default=BF3.2 BEEBRAIN brushed");
+    cmd_pid(NULL, NULL, NULL, NULL);
     return;
   }
 
-  float kp = (float)atoi(kp_s) / 1000.0f;
-  float ki = (float)atoi(ki_s) / 1000.0f;
-  float kd = (float)atoi(kd_s) / 1000.0f;
-  if (ControllerAttitude_SetPid(axis, kp, ki, kd))
+  if (!parse_axis(axis_name, &axis) || (kp_s == NULL) || (ki_s == NULL) || (kd_s == NULL))
+  {
+    DebugUart_WriteLine("usage: pid roll|pitch|yaw <P> <I> <D> or pid default");
+    return;
+  }
+
+  int p = atoi(kp_s);
+  int i = atoi(ki_s);
+  int d = atoi(kd_s);
+  if (p < 0) { p = 0; }
+  if (i < 0) { i = 0; }
+  if (d < 0) { d = 0; }
+  if (p > 255) { p = 255; }
+  if (i > 255) { i = 255; }
+  if (d > 255) { d = 255; }
+  if (ControllerAttitude_SetBfPid(axis, (uint8_t)p, (uint8_t)i, (uint8_t)d))
   {
     DebugUart_WriteLine("pid ok");
+    print_pid_axis(axis, axis_name);
   }
 }
 
