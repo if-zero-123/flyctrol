@@ -8,6 +8,7 @@
 #include "task.h"
 #include "battery_adc.h"
 #include "debug_uart.h"
+#include "safety.h"
 #include "topic.h"
 
 typedef struct {
@@ -21,6 +22,13 @@ typedef struct {
   uint16_t max_throttle;
   uint16_t max_motor;
   uint16_t max_motor_spread;
+  uint16_t min_heap_free;
+  uint16_t max_rc_age_ms;
+  uint16_t max_imu_age_ms;
+  uint16_t max_baro_age_ms;
+  uint16_t stop_rc_age_ms;
+  uint16_t stop_imu_age_ms;
+  uint16_t stop_baro_age_ms;
   bool althold_seen;
   int32_t min_baro_alt_cm;
   int32_t max_baro_alt_cm;
@@ -55,6 +63,41 @@ static uint16_t duty_permille(float duty)
   return (uint16_t)(duty * 1000.0f);
 }
 
+static uint16_t age_u16(uint32_t now, uint32_t timestamp_ms)
+{
+  uint32_t age = (timestamp_ms == 0U) ? 65535U : (now - timestamp_ms);
+  return (age > 65535U) ? 65535U : (uint16_t)age;
+}
+
+static const char *stop_reason(uint16_t stop_flags, uint16_t last_disarm)
+{
+  if ((last_disarm & SAFETY_DISARM_ARM_LOST) != 0U)
+  {
+    return "arm_lost";
+  }
+  if ((last_disarm & SAFETY_DISARM_CRASH) != 0U)
+  {
+    return "crash";
+  }
+  if ((stop_flags & SAFETY_FAILSAFE_RC) != 0U)
+  {
+    return "rc_timeout";
+  }
+  if ((stop_flags & SAFETY_FAILSAFE_IMU) != 0U)
+  {
+    return "imu_timeout";
+  }
+  if ((stop_flags & SAFETY_FAILSAFE_CRASH) != 0U)
+  {
+    return "crash_failsafe";
+  }
+  if ((stop_flags & SAFETY_FAILSAFE_BATTERY) != 0U)
+  {
+    return "battery";
+  }
+  return "manual_or_none";
+}
+
 static void begin_flight(uint32_t now)
 {
   memset(&s_summary, 0, sizeof(s_summary));
@@ -63,6 +106,7 @@ static void begin_flight(uint32_t now)
   s_summary.start_ms = now;
   s_summary.end_ms = now;
   s_summary.min_batt_mv = 65535U;
+  s_summary.min_heap_free = 65535U;
   s_summary.min_baro_alt_cm = 2147483647L;
   s_summary.max_baro_alt_cm = -2147483647L;
 }
@@ -84,8 +128,13 @@ void FlightMonitor_Update(const flight_status_t *status)
 
   battery_status_t batt = Topic_GetBattery();
   attitude_t att = Topic_GetAttitude();
+  app_rc_t rc = Topic_GetRc();
+  imu_sample_t imu = Topic_GetImu();
   baro_sample_t baro = Topic_GetBaro();
   uint32_t now = status->uptime_ms;
+  uint16_t rc_age = age_u16(now, rc.last_update_ms);
+  uint16_t imu_age = age_u16(now, imu.timestamp_ms);
+  uint16_t baro_age = age_u16(now, baro.timestamp_ms);
 
   taskENTER_CRITICAL();
   if (status->armed && !s_prev_armed)
@@ -123,6 +172,16 @@ void FlightMonitor_Update(const flight_status_t *status)
     {
       s_summary.max_throttle = status->throttle_permille;
     }
+    {
+      size_t heap_free = xPortGetFreeHeapSize();
+      if (heap_free < s_summary.min_heap_free)
+      {
+        s_summary.min_heap_free = (heap_free > 65535U) ? 65535U : (uint16_t)heap_free;
+      }
+    }
+    if (rc_age > s_summary.max_rc_age_ms) { s_summary.max_rc_age_ms = rc_age; }
+    if (imu_age > s_summary.max_imu_age_ms) { s_summary.max_imu_age_ms = imu_age; }
+    if (baro_age > s_summary.max_baro_age_ms) { s_summary.max_baro_age_ms = baro_age; }
     if (max_motor > s_summary.max_motor)
     {
       s_summary.max_motor = max_motor;
@@ -156,6 +215,9 @@ void FlightMonitor_Update(const flight_status_t *status)
     s_summary.end_ms = now;
     s_summary.stop_flags = status->failsafe_flags;
     s_summary.last_disarm = status->last_disarm_flags;
+    s_summary.stop_rc_age_ms = rc_age;
+    s_summary.stop_imu_age_ms = imu_age;
+    s_summary.stop_baro_age_ms = baro_age;
   }
   s_prev_armed = status->armed;
   taskEXIT_CRITICAL();
@@ -181,6 +243,7 @@ void FlightMonitor_Print(void)
                    (unsigned long)duration_ms,
                    s.stop_flags,
                    s.last_disarm);
+  DebugUart_Printf("flight stop_reason=%s\r\n", stop_reason(s.stop_flags, s.last_disarm));
   DebugUart_Printf("flight min_batt=%umV max_thr=%u max_motor=%u spread=%u\r\n",
                    (s.min_batt_mv == 65535U) ? 0U : s.min_batt_mv,
                    s.max_throttle,
@@ -198,4 +261,12 @@ void FlightMonitor_Print(void)
                    (long)((s.max_baro_alt_cm == -2147483647L) ? 0 : s.max_baro_alt_cm),
                    s.max_abs_baro_vel_cms,
                    s.max_abs_alt_out_permille);
+  DebugUart_Printf("flight health max_age rc=%ums imu=%ums baro=%ums stop_age rc=%ums imu=%ums baro=%ums min_heap=%u\r\n",
+                   s.max_rc_age_ms,
+                   s.max_imu_age_ms,
+                   s.max_baro_age_ms,
+                   s.stop_rc_age_ms,
+                   s.stop_imu_age_ms,
+                   s.stop_baro_age_ms,
+                   (s.min_heap_free == 65535U) ? 0U : s.min_heap_free);
 }

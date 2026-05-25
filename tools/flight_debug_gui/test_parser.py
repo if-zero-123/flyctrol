@@ -24,6 +24,11 @@ clock src=PLL pll=HSE sys=72000000Hz hclk=72000000Hz pclk1=36000000Hz pclk2=7200
 roll kp=3500 ki=0 kd=45 milli
 pitch kp=3500 ki=0 kd=45 milli
 yaw kp=1800 ki=0 kd=0 milli
+flight active=0 duration=15052ms stop_flags=0x0001 last_disarm=0x0000
+flight stop_reason=rc_timeout
+flight min_batt=6853mV max_thr=500 max_motor=700 spread=597
+flight althold=1 alt_min=-12cm alt_max=80cm max_vel=125cm/s max_alt_out=42
+flight health max_age rc=710ms imu=3ms baro=28ms stop_age rc=710ms imu=2ms baro=24ms min_heap=776
 mot 0 0 0 0
 """
 
@@ -58,6 +63,10 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(state["rcmap"]["order"], "AETR")
         self.assertEqual(len(state["rc"]["raw"]), 16)
         self.assertEqual(state["pid"]["roll"]["kp"], 3500)
+        self.assertEqual(state["flight"]["stop_reason"], "rc_timeout")
+        self.assertEqual(state["flight"]["stop_rc_age_ms"], 710)
+        self.assertEqual(state["flight"]["min_heap"], 776)
+        self.assertTrue(state["flight"]["althold"])
         self.assertEqual(state["motors"]["m"], [0, 0, 0, 0])
         self.assertGreater(len(parser.rows), 0)
 
