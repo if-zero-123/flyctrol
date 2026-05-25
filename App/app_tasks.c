@@ -4,6 +4,7 @@
 #include "task.h"
 #include "battery_adc.h"
 #include "bmp280.h"
+#include "board_config.h"
 #include "board_time.h"
 #include "cli.h"
 #include "commander.h"
@@ -98,28 +99,37 @@ static void StabilizerTask(void *argument)
     Safety_Update();
     flight_status_t status = Safety_GetStatus();
     baro_sample_t baro = Topic_GetBaro();
-    if (!status.armed)
+    bool control_enabled = status.armed && (sp.throttle_permille > BOARD_ARM_THROTTLE_MAX);
+    if (!control_enabled)
     {
       ControllerAttitude_Reset();
     }
 
-    if (imu_updated)
+    if (control_enabled && imu_updated)
     {
       ControllerAttitude_Update(&attitude, &imu, &sp, 0.002f, &control);
     }
-    else
+    else if (control_enabled)
     {
       control = status.control;
     }
     control.altitude_permille = ControllerAltitude_Update(&baro,
                                                           &sp,
-                                                          status.armed && status.baro_mode && attitude.healthy,
+                                                          control_enabled && status.baro_mode && attitude.healthy,
                                                           0.002f);
 
     if (Safety_CanRunMotors())
     {
-      MixerQuad_Mix(sp.throttle_permille, &control, motor);
-      MotorPwm_Set4(motor);
+      if (control_enabled)
+      {
+        MixerQuad_Mix(sp.throttle_permille, &control, motor);
+        MotorPwm_Set4(motor);
+      }
+      else
+      {
+        MixerQuad_ResetThrottleRamp();
+        MotorPwm_SetAllPermille(MixerQuad_GetMotorIdlePermille());
+      }
     }
     else if (!Safety_CanMotorTest())
     {
