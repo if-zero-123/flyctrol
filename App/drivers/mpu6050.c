@@ -84,12 +84,6 @@ bool Mpu6050_Init(void)
 {
   uint8_t who = 0U;
   s_healthy = false;
-  s_gyro_bias_dps[0] = 0.0f;
-  s_gyro_bias_dps[1] = 0.0f;
-  s_gyro_bias_dps[2] = 0.0f;
-  s_accel_bias_g[0] = 0.0f;
-  s_accel_bias_g[1] = 0.0f;
-  s_accel_bias_g[2] = 0.0f;
 
   if (!read_reg(MPU6050_WHO_AM_I, &who) || (who != 0x68U))
   {
@@ -104,10 +98,6 @@ bool Mpu6050_Init(void)
   ok = ok && write_reg(MPU6050_GYRO_CONFIG, 0x08U);
   ok = ok && write_reg(MPU6050_ACCEL_CONFIG, 0x08U);
 
-  if (ok)
-  {
-    ok = Mpu6050_CalibrateGyro(128U);
-  }
   s_healthy = ok;
   return ok;
 }

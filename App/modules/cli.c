@@ -93,8 +93,9 @@ static void print_status(void)
                    (unsigned long)st.uptime_ms,
                    st.throttle_permille,
                    st.motor_test_unlocked ? 1U : 0U);
-  DebugUart_Printf("failsafe_flags=0x%04X motor_idle=%u\r\n",
+  DebugUart_Printf("failsafe_flags=0x%04X last_disarm=0x%04X motor_idle=%u\r\n",
                    st.failsafe_flags,
+                   st.last_disarm_flags,
                    st.motor_idle_permille);
 }
 

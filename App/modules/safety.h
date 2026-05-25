@@ -8,6 +8,7 @@
 #define SAFETY_FAILSAFE_RC      0x0001U
 #define SAFETY_FAILSAFE_IMU     0x0002U
 #define SAFETY_FAILSAFE_BATTERY 0x0004U
+#define SAFETY_DISARM_ARM_LOST  0x0100U
 
 void Safety_Init(void);
 void Safety_Update(void);

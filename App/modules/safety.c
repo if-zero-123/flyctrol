@@ -71,13 +71,20 @@ void Safety_Update(void)
   }
   s_status.motor_test_unlocked = (!s_status.armed) && (now <= s_motor_test_until_ms) && (s_motor_test_bench || !s_status.failsafe);
 
+  bool was_armed = s_status.armed;
+
   if (s_status.failsafe || !arm_request)
   {
     s_status.armed = false;
+    if (was_armed)
+    {
+      s_status.last_disarm_flags = s_status.failsafe ? failsafe_flags : SAFETY_DISARM_ARM_LOST;
+    }
   }
   else if (!s_status.armed && arm_request && throttle_low)
   {
     s_status.armed = true;
+    s_status.last_disarm_flags = 0U;
   }
 
   if (!s_status.armed && !s_status.motor_test_unlocked)
@@ -108,6 +115,7 @@ void Safety_RequestDisarm(void)
 {
   s_cli_arm_request = false;
   s_status.armed = false;
+  s_status.last_disarm_flags = SAFETY_DISARM_ARM_LOST;
   s_motor_test_bench = false;
   s_motor_test_until_ms = 0U;
   MotorPwm_SetAll(0.0f);
