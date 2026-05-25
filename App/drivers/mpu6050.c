@@ -17,6 +17,8 @@
 static bool s_healthy;
 static float s_gyro_bias_dps[3];
 static float s_accel_bias_g[3];
+static uint32_t s_read_ok_count;
+static uint32_t s_read_fail_count;
 
 static bool write_reg(uint8_t reg, uint8_t value)
 {
@@ -207,6 +209,7 @@ bool Mpu6050_Read(imu_sample_t *out)
   if (!read_raw(&ax, &ay, &az, &temp, &gx, &gy, &gz))
   {
     s_healthy = false;
+    s_read_fail_count++;
     out->healthy = false;
     out->timestamp_ms = HAL_GetTick();
     return false;
@@ -222,10 +225,23 @@ bool Mpu6050_Read(imu_sample_t *out)
   out->timestamp_ms = HAL_GetTick();
   out->healthy = true;
   s_healthy = true;
+  s_read_ok_count++;
   return true;
 }
 
 bool Mpu6050_IsHealthy(void)
 {
   return s_healthy;
+}
+
+void Mpu6050_GetReadStats(uint32_t *ok_count, uint32_t *fail_count)
+{
+  if (ok_count != NULL)
+  {
+    *ok_count = s_read_ok_count;
+  }
+  if (fail_count != NULL)
+  {
+    *fail_count = s_read_fail_count;
+  }
 }

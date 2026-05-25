@@ -84,8 +84,6 @@ static void StabilizerTask(void *argument)
       imu.healthy = false;
       Topic_PublishImu(&imu);
       attitude = Topic_GetAttitude();
-      attitude.healthy = false;
-      Topic_PublishAttitude(&attitude);
 
       if ((now - last_imu_retry_ms) >= 1000U)
       {

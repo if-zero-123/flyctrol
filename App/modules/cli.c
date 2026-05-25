@@ -158,6 +158,9 @@ static void print_imu(void)
 {
   imu_sample_t imu = Topic_GetImu();
   attitude_t att = Topic_GetAttitude();
+  uint32_t read_ok = 0U;
+  uint32_t read_fail = 0U;
+  Mpu6050_GetReadStats(&read_ok, &read_fail);
   DebugUart_Printf("imu ok=%u acc_mg=%ld,%ld,%ld gyro_cdps=%ld,%ld,%ld temp=%d.%02dC\r\n",
                    imu.healthy ? 1U : 0U,
                    (long)(imu.accel_g[0] * 1000.0f),
@@ -172,6 +175,10 @@ static void print_imu(void)
                    (long)deg_to_cdeg(att.roll_deg),
                    (long)deg_to_cdeg(att.pitch_deg),
                    (long)deg_to_cdeg(att.yaw_deg));
+  DebugUart_Printf("imu reads ok=%lu fail=%lu age=%lums\r\n",
+                   (unsigned long)read_ok,
+                   (unsigned long)read_fail,
+                   (unsigned long)(HAL_GetTick() - imu.timestamp_ms));
 }
 
 static void print_baro(void)
@@ -283,7 +290,15 @@ static void print_control(void)
 {
   flight_status_t st = Topic_GetStatus();
   attitude_t att = Topic_GetAttitude();
+  imu_sample_t imu = Topic_GetImu();
 
+  DebugUart_Printf("control status arm=%u fs=%u flags=0x%04X rc=%u imu=%u imu_age=%lums\r\n",
+                   st.armed ? 1U : 0U,
+                   st.failsafe ? 1U : 0U,
+                   st.failsafe_flags,
+                   st.rc_ok ? 1U : 0U,
+                   st.imu_ok ? 1U : 0U,
+                   (unsigned long)(HAL_GetTick() - imu.timestamp_ms));
   DebugUart_Printf("control sp_cd r=%ld p=%ld yawrate_cdps=%ld thr=%u baro=%u\r\n",
                    (long)deg_to_cdeg(st.setpoint.roll_deg),
                    (long)deg_to_cdeg(st.setpoint.pitch_deg),
