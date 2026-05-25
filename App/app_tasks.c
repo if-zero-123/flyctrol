@@ -98,6 +98,10 @@ static void StabilizerTask(void *argument)
     Safety_Update();
     flight_status_t status = Safety_GetStatus();
     baro_sample_t baro = Topic_GetBaro();
+    if (!status.armed)
+    {
+      ControllerAttitude_Reset();
+    }
 
     if (imu_updated)
     {

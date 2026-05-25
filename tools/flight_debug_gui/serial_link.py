@@ -199,7 +199,7 @@ class FakeSerialBackend(SerialBackend):
         if cmd == "help":
             return (
                 "cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag\r\n"
-                "cmd: motormap control mixcheck [r_milli p_milli y_milli thr]\r\n"
+                "cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]\r\n"
                 "cmd: motoridle [0-200], motor unlock|stop|<1-4> <permille>, motors <permille>\r\n"
                 "cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]\r\n"
                 "cmd: gyrocal acccal imucal arm disarm log on|off reboot",
@@ -238,11 +238,20 @@ class FakeSerialBackend(SerialBackend):
             ), logging
         if cmd in ("control", "ctrl"):
             return (
+                "control status arm=0 fs=0 flags=0x0000 rc=1 imu=1 imu_age=2ms yawdir=-1\r\n"
                 "control sp_cd r=0 p=0 yawrate_cdps=0 thr=0 baro=0\r\n"
                 "control att_cd r=24 p=-16 y=110 healthy=1\r\n"
                 "control out_milli r=0 p=0 y=0 alt=0\r\n"
                 "control mot_permille M1=0 M2=0 M3=0 M4=0"
             ), logging
+        if cmd.startswith("yawdir"):
+            parts = cmd.split()
+            value = parts[1] if len(parts) > 1 else "reverse"
+            if value in ("normal", "1"):
+                return "yawdir=normal (1)", logging
+            if value in ("reverse", "-1"):
+                return "yawdir=reverse (-1)", logging
+            return "usage: yawdir normal|reverse", logging
         if cmd.startswith("mixcheck"):
             return FakeSerialBackend._mixcheck_response(cmd), logging
         if cmd.startswith("motoridle"):

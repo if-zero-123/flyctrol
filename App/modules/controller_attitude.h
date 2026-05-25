@@ -17,6 +17,9 @@ void ControllerAttitude_Update(const attitude_t *attitude,
                                const control_setpoint_t *setpoint,
                                float dt_s,
                                control_output_t *out);
+void ControllerAttitude_Reset(void);
+void ControllerAttitude_SetYawGyroDirection(int8_t direction);
+int8_t ControllerAttitude_GetYawGyroDirection(void);
 bool ControllerAttitude_SetPid(pid_axis_t axis, float kp, float ki, float kd);
 bool ControllerAttitude_GetPid(pid_axis_t axis, app_pid_t *out);
 

@@ -52,7 +52,7 @@ static int32_t duty_to_permille(float duty)
 static void print_help(void)
 {
   DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
-  DebugUart_WriteLine("cmd: motormap control mixcheck [r_milli p_milli y_milli thr]");
+  DebugUart_WriteLine("cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]");
   DebugUart_WriteLine("cmd: motoridle [0-200], motor unlock|stop|<1-4> <permille>, motors <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]");
   DebugUart_WriteLine("cmd: gyrocal acccal imucal arm disarm log on|off reboot");
@@ -291,14 +291,16 @@ static void print_control(void)
   flight_status_t st = Topic_GetStatus();
   attitude_t att = Topic_GetAttitude();
   imu_sample_t imu = Topic_GetImu();
+  int8_t yawdir = ControllerAttitude_GetYawGyroDirection();
 
-  DebugUart_Printf("control status arm=%u fs=%u flags=0x%04X rc=%u imu=%u imu_age=%lums\r\n",
+  DebugUart_Printf("control status arm=%u fs=%u flags=0x%04X rc=%u imu=%u imu_age=%lums yawdir=%d\r\n",
                    st.armed ? 1U : 0U,
                    st.failsafe ? 1U : 0U,
                    st.failsafe_flags,
                    st.rc_ok ? 1U : 0U,
                    st.imu_ok ? 1U : 0U,
-                   (unsigned long)(HAL_GetTick() - imu.timestamp_ms));
+                   (unsigned long)(HAL_GetTick() - imu.timestamp_ms),
+                   yawdir);
   DebugUart_Printf("control sp_cd r=%ld p=%ld yawrate_cdps=%ld thr=%u baro=%u\r\n",
                    (long)deg_to_cdeg(st.setpoint.roll_deg),
                    (long)deg_to_cdeg(st.setpoint.pitch_deg),
@@ -365,6 +367,30 @@ static void cmd_mixcheck(char *roll_s, char *pitch_s, char *yaw_s, char *thr_s)
                    (long)duty_to_permille(motor[2]),
                    (long)duty_to_permille(motor[3]));
   DebugUart_WriteLine("mixcheck +roll=>M3/M4 up, +pitch=>M1/M3 up, +yaw=>M2/M3 up");
+}
+
+static void cmd_yawdir(char *arg1)
+{
+  if (arg1 != NULL)
+  {
+    if ((strcmp(arg1, "normal") == 0) || (strcmp(arg1, "1") == 0))
+    {
+      ControllerAttitude_SetYawGyroDirection(1);
+    }
+    else if ((strcmp(arg1, "reverse") == 0) || (strcmp(arg1, "-1") == 0))
+    {
+      ControllerAttitude_SetYawGyroDirection(-1);
+    }
+    else
+    {
+      DebugUart_WriteLine("usage: yawdir normal|reverse");
+      return;
+    }
+  }
+
+  DebugUart_Printf("yawdir=%s (%d)\r\n",
+                   (ControllerAttitude_GetYawGyroDirection() < 0) ? "reverse" : "normal",
+                   ControllerAttitude_GetYawGyroDirection());
 }
 
 static void cmd_motoridle(char *arg1)
@@ -590,6 +616,10 @@ static void execute_line(char *line)
   else if ((strcmp(cmd, "control") == 0) || (strcmp(cmd, "ctrl") == 0))
   {
     print_control();
+  }
+  else if (strcmp(cmd, "yawdir") == 0)
+  {
+    cmd_yawdir(a1);
   }
   else if (strcmp(cmd, "mixcheck") == 0)
   {

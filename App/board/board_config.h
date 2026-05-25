@@ -21,6 +21,7 @@
 #define BOARD_CONTROL_LOOP_HZ         500U
 #define BOARD_MAX_ANGLE_DEG           25.0f
 #define BOARD_MAX_YAW_RATE_DPS        120.0f
+#define BOARD_YAW_GYRO_DIRECTION      (-1)
 #define BOARD_ARM_THROTTLE_MAX        50U
 #define BOARD_RC_TIMEOUT_MS           300U
 #define BOARD_IMU_FAILSAFE_TIMEOUT_MS 250U
