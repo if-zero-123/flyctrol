@@ -20,7 +20,7 @@ static float clampf_local(float v, float min_v, float max_v)
   return v;
 }
 
-static void normalize_to_range(float motor_out[4], float idle, float max_out)
+static void normalize_to_range(float motor_out[4], float idle, float max_out, float throttle)
 {
   float min_v = motor_out[0];
   float max_v = motor_out[0];
@@ -43,10 +43,10 @@ static void normalize_to_range(float motor_out[4], float idle, float max_out)
     float scale = available / span;
     for (uint8_t i = 0U; i < 4U; i++)
     {
-      motor_out[i] = idle + ((motor_out[i] - min_v) * scale);
+      motor_out[i] = throttle + ((motor_out[i] - throttle) * scale);
     }
   }
-  else
+  else if (throttle >= 0.50f)
   {
     float offset = 0.0f;
     if (min_v < idle)
@@ -174,5 +174,5 @@ void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, 
   motor_out[1] = t - r - p + y; /* M2 front-right, CCW */
   motor_out[2] = t + r + p + y; /* M3 rear-left, CCW */
   motor_out[3] = t + r - p - y; /* M4 front-left, CW */
-  normalize_to_range(motor_out, idle, max_out);
+  normalize_to_range(motor_out, idle, max_out, t);
 }
