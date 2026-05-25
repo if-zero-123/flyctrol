@@ -50,11 +50,17 @@ static int32_t duty_to_permille(float duty)
   return (int32_t)(duty * 1000.0f);
 }
 
+static const char *onoff(uint8_t value)
+{
+  return (value != 0U) ? "on" : "off";
+}
+
 static void print_help(void)
 {
   DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
   DebugUart_WriteLine("cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]");
   DebugUart_WriteLine("cmd: flight shows last armed-flight summary");
+  DebugUart_WriteLine("cmd: flight core: airmode=on crash_protect=on brushed_pwm=timer duty");
   DebugUart_WriteLine("cmd: motoridle [0-200], motormax [700-1000], motor unlock|stop|<1-4> <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <P> <I> <D>|safe|bf] uses BF-style units");
   DebugUart_WriteLine("cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm log on|off reboot");
@@ -102,14 +108,16 @@ static void print_clock(void)
 static void print_status(void)
 {
   flight_status_t st = Topic_GetStatus();
-  DebugUart_Printf("armed=%u failsafe=%u rc=%u imu=%u baro=%u mode angle=%u baro=%u\r\n",
+  DebugUart_Printf("armed=%u failsafe=%u rc=%u imu=%u baro=%u mode angle=%u baro=%u air=%u crash=%u\r\n",
                    st.armed ? 1U : 0U,
                    st.failsafe ? 1U : 0U,
                    st.rc_ok ? 1U : 0U,
                    st.imu_ok ? 1U : 0U,
                    st.baro_ok ? 1U : 0U,
                    st.angle_mode ? 1U : 0U,
-                   st.baro_mode ? 1U : 0U);
+                   st.baro_mode ? 1U : 0U,
+                   st.air_mode ? 1U : 0U,
+                   st.crash_detected ? 1U : 0U);
   DebugUart_Printf("uptime=%lums throttle=%u motor_test=%u\r\n",
                    (unsigned long)st.uptime_ms,
                    st.throttle_permille,
@@ -124,6 +132,12 @@ static void print_status(void)
                    BOARD_ARM_SWITCH_DEBOUNCE_MS,
                    BOARD_ARM_THROTTLE_MAX,
                    BOARD_BATT_CRITICAL_MV);
+  DebugUart_Printf("flight_core airmode=%s start_thr=%u crash_angle=%lddeg crash_gyro=%lddps hold=%ums\r\n",
+                   onoff(BOARD_AIRMODE_ENABLE),
+                   BOARD_AIRMODE_START_THROTTLE,
+                   (long)BOARD_CRASH_ANGLE_DEG,
+                   (long)BOARD_CRASH_GYRO_DPS,
+                   BOARD_CRASH_HOLD_MS);
 }
 
 static void print_tasks(void)
@@ -319,11 +333,12 @@ static void print_control(void)
                    st.imu_ok ? 1U : 0U,
                    (unsigned long)(HAL_GetTick() - imu.timestamp_ms),
                    yawdir);
-  DebugUart_Printf("control sp_cd r=%ld p=%ld yawrate_cdps=%ld thr=%u baro=%u\r\n",
+  DebugUart_Printf("control sp_cd r=%ld p=%ld yawrate_cdps=%ld thr=%u air=%u baro=%u\r\n",
                    (long)deg_to_cdeg(st.setpoint.roll_deg),
                    (long)deg_to_cdeg(st.setpoint.pitch_deg),
                    (long)deg_to_cdeg(st.setpoint.yaw_rate_dps),
                    st.setpoint.throttle_permille,
+                   st.setpoint.air_mode ? 1U : 0U,
                    st.setpoint.baro_hold ? 1U : 0U);
   DebugUart_Printf("control att_cd r=%ld p=%ld y=%ld healthy=%u\r\n",
                    (long)deg_to_cdeg(att.roll_deg),

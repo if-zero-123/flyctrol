@@ -64,21 +64,18 @@ static void normalize_to_range(float motor_out[4], float idle, float max_out, fl
       }
     }
   }
-  else if (throttle >= 0.50f)
+  float offset = 0.0f;
+  if (min_v < idle)
   {
-    float offset = 0.0f;
-    if (min_v < idle)
-    {
-      offset = idle - min_v;
-    }
-    if ((max_v + offset) > max_out)
-    {
-      offset = max_out - max_v;
-    }
-    for (uint8_t i = 0U; i < 4U; i++)
-    {
-      motor_out[i] += offset;
-    }
+    offset = idle - min_v;
+  }
+  if ((max_v + offset) > max_out)
+  {
+    offset = max_out - max_v;
+  }
+  for (uint8_t i = 0U; i < 4U; i++)
+  {
+    motor_out[i] += offset;
   }
 
   for (uint8_t i = 0U; i < 4U; i++)

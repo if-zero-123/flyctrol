@@ -225,7 +225,7 @@ void ControllerAttitude_Update(const attitude_t *attitude,
                                    -BOARD_MAX_YAW_RATE_DPS,
                                    BOARD_MAX_YAW_RATE_DPS);
   float yaw_rate_dps = ((float)s_yaw_gyro_direction) * imu->gyro_dps[2];
-  bool allow_integrator = setpoint->throttle_permille > BOARD_ARM_THROTTLE_MAX;
+  bool allow_integrator = setpoint->air_mode || (setpoint->throttle_permille > BOARD_ARM_THROTTLE_MAX);
 
   out->roll = update_rate_axis(&s_axis[PID_AXIS_ROLL],
                                roll_rate_sp,

@@ -62,5 +62,6 @@ void Commander_BuildSetpoint(const app_rc_t *rc, control_setpoint_t *out)
   out->pitch_deg = norm_to_angle(rc->pitch);
   out->yaw_rate_dps = norm_to_yaw_rate(rc->yaw);
   out->throttle_permille = apply_throttle_curve(rc->throttle);
+  out->air_mode = false;
   out->baro_hold = rc->baro_mode;
 }

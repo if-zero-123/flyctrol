@@ -59,6 +59,7 @@ typedef struct {
   float pitch_deg;
   float yaw_rate_dps;
   uint16_t throttle_permille;
+  bool air_mode;
   bool baro_hold;
 } control_setpoint_t;
 
@@ -77,6 +78,8 @@ typedef struct {
   bool baro_ok;
   bool angle_mode;
   bool baro_mode;
+  bool air_mode;
+  bool crash_detected;
   bool motor_test_unlocked;
   uint16_t failsafe_flags;
   uint16_t arm_block_flags;

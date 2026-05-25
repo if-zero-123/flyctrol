@@ -63,6 +63,7 @@ static void StabilizerTask(void *argument)
   TickType_t last = xTaskGetTickCount();
   const TickType_t period = pdMS_TO_TICKS(2U);
   uint32_t last_imu_retry_ms = 0U;
+  bool airmode_latched = false;
 
   for (;;)
   {
@@ -99,7 +100,17 @@ static void StabilizerTask(void *argument)
     Safety_Update();
     flight_status_t status = Safety_GetStatus();
     baro_sample_t baro = Topic_GetBaro();
-    bool control_enabled = status.armed && (sp.throttle_permille > BOARD_ARM_THROTTLE_MAX);
+    if (!status.armed)
+    {
+      airmode_latched = false;
+    }
+    else if ((BOARD_AIRMODE_ENABLE != 0U) && (sp.throttle_permille >= BOARD_AIRMODE_START_THROTTLE))
+    {
+      airmode_latched = true;
+    }
+    sp.air_mode = (BOARD_AIRMODE_ENABLE != 0U) && airmode_latched;
+    bool control_enabled = status.armed &&
+                           ((sp.throttle_permille > BOARD_ARM_THROTTLE_MAX) || sp.air_mode);
     if (!control_enabled)
     {
       ControllerAttitude_Reset();
@@ -141,6 +152,7 @@ static void StabilizerTask(void *argument)
     MotorPwm_GetLast(status.motor);
     status.throttle_permille = rc.throttle;
     status.setpoint = sp;
+    status.air_mode = sp.air_mode;
     status.control = control;
     Topic_PublishStatus(&status);
 
