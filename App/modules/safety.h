@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include "flight_types.h"
 
+#define SAFETY_FAILSAFE_RC      0x0001U
+#define SAFETY_FAILSAFE_IMU     0x0002U
+#define SAFETY_FAILSAFE_BATTERY 0x0004U
+
 void Safety_Init(void);
 void Safety_Update(void);
 bool Safety_CanRunMotors(void);

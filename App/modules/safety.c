@@ -2,6 +2,7 @@
 
 #include "board_config.h"
 #include "board_time.h"
+#include "mixer_quad.h"
 #include "motor_pwm.h"
 #include "topic.h"
 
@@ -34,10 +35,25 @@ void Safety_Update(void)
   uint32_t now = BoardTime_Millis();
 
   bool rc_recent = rc.connected && ((now - rc.last_update_ms) <= BOARD_RC_TIMEOUT_MS) && !rc.failsafe;
-  bool level_ok = att.healthy && (absf_local(att.roll_deg) < 75.0f) && (absf_local(att.pitch_deg) < 75.0f);
+  bool attitude_recent = (att.timestamp_ms != 0U) && ((now - att.timestamp_ms) <= BOARD_IMU_FAILSAFE_TIMEOUT_MS);
+  bool level_ok = attitude_recent && (absf_local(att.roll_deg) < 75.0f) && (absf_local(att.pitch_deg) < 75.0f);
   bool battery_ok = !batt.critical;
   bool arm_request = rc.arm_switch || s_cli_arm_request;
   bool throttle_low = rc.throttle <= BOARD_ARM_THROTTLE_MAX;
+  uint16_t failsafe_flags = 0U;
+
+  if (!rc_recent)
+  {
+    failsafe_flags |= SAFETY_FAILSAFE_RC;
+  }
+  if (!level_ok)
+  {
+    failsafe_flags |= SAFETY_FAILSAFE_IMU;
+  }
+  if (!battery_ok)
+  {
+    failsafe_flags |= SAFETY_FAILSAFE_BATTERY;
+  }
 
   s_status.rc_ok = rc_recent;
   s_status.imu_ok = level_ok;
@@ -45,8 +61,10 @@ void Safety_Update(void)
   s_status.angle_mode = rc.angle_mode;
   s_status.baro_mode = rc.baro_mode && baro.healthy;
   s_status.throttle_permille = rc.throttle;
+  s_status.motor_idle_permille = MixerQuad_GetMotorIdlePermille();
   s_status.uptime_ms = now;
-  s_status.failsafe = (!rc_recent) || (!level_ok) || (!battery_ok);
+  s_status.failsafe_flags = failsafe_flags;
+  s_status.failsafe = failsafe_flags != 0U;
   if (now > s_motor_test_until_ms)
   {
     s_motor_test_bench = false;

@@ -15,6 +15,7 @@
 #define MPU6050_ACCEL_XOUT_H 0x3BU
 
 static bool s_healthy;
+static float s_gyro_bias_dps[3];
 
 static bool write_reg(uint8_t reg, uint8_t value)
 {
@@ -54,10 +55,37 @@ static int16_t be16(const uint8_t *p)
   return (int16_t)((uint16_t)p[0] << 8 | p[1]);
 }
 
+static bool read_raw(int16_t *ax,
+                     int16_t *ay,
+                     int16_t *az,
+                     int16_t *temp,
+                     int16_t *gx,
+                     int16_t *gy,
+                     int16_t *gz)
+{
+  uint8_t data[14];
+  if (!read_regs(MPU6050_ACCEL_XOUT_H, data, sizeof(data)))
+  {
+    return false;
+  }
+
+  if (ax != NULL) { *ax = be16(&data[0]); }
+  if (ay != NULL) { *ay = be16(&data[2]); }
+  if (az != NULL) { *az = be16(&data[4]); }
+  if (temp != NULL) { *temp = be16(&data[6]); }
+  if (gx != NULL) { *gx = be16(&data[8]); }
+  if (gy != NULL) { *gy = be16(&data[10]); }
+  if (gz != NULL) { *gz = be16(&data[12]); }
+  return true;
+}
+
 bool Mpu6050_Init(void)
 {
   uint8_t who = 0U;
   s_healthy = false;
+  s_gyro_bias_dps[0] = 0.0f;
+  s_gyro_bias_dps[1] = 0.0f;
+  s_gyro_bias_dps[2] = 0.0f;
 
   if (!read_reg(MPU6050_WHO_AM_I, &who) || (who != 0x68U))
   {
@@ -72,20 +100,70 @@ bool Mpu6050_Init(void)
   ok = ok && write_reg(MPU6050_GYRO_CONFIG, 0x08U);
   ok = ok && write_reg(MPU6050_ACCEL_CONFIG, 0x08U);
 
+  if (ok)
+  {
+    ok = Mpu6050_CalibrateGyro(128U);
+  }
   s_healthy = ok;
   return ok;
 }
 
+bool Mpu6050_CalibrateGyro(uint16_t samples)
+{
+  if (samples < 16U)
+  {
+    samples = 16U;
+  }
+
+  int64_t gx_sum = 0;
+  int64_t gy_sum = 0;
+  int64_t gz_sum = 0;
+  uint16_t ok_count = 0U;
+
+  for (uint16_t i = 0U; i < samples; i++)
+  {
+    int16_t gx = 0;
+    int16_t gy = 0;
+    int16_t gz = 0;
+    if (read_raw(NULL, NULL, NULL, NULL, &gx, &gy, &gz))
+    {
+      gx_sum += gx;
+      gy_sum += gy;
+      gz_sum += gz;
+      ok_count++;
+    }
+    HAL_Delay(2U);
+  }
+
+  if (ok_count < (samples / 2U))
+  {
+    s_healthy = false;
+    return false;
+  }
+
+  s_gyro_bias_dps[0] = ((float)gx_sum / (float)ok_count) / 65.5f;
+  s_gyro_bias_dps[1] = ((float)gy_sum / (float)ok_count) / 65.5f;
+  s_gyro_bias_dps[2] = ((float)gz_sum / (float)ok_count) / 65.5f;
+  s_healthy = true;
+  return true;
+}
+
 bool Mpu6050_Read(imu_sample_t *out)
 {
-  uint8_t data[14];
   if (out == NULL)
   {
     return false;
   }
   memset(out, 0, sizeof(*out));
 
-  if (!read_regs(MPU6050_ACCEL_XOUT_H, data, sizeof(data)))
+  int16_t ax = 0;
+  int16_t ay = 0;
+  int16_t az = 0;
+  int16_t temp = 0;
+  int16_t gx = 0;
+  int16_t gy = 0;
+  int16_t gz = 0;
+  if (!read_raw(&ax, &ay, &az, &temp, &gx, &gy, &gz))
   {
     s_healthy = false;
     out->healthy = false;
@@ -93,20 +171,12 @@ bool Mpu6050_Read(imu_sample_t *out)
     return false;
   }
 
-  int16_t ax = be16(&data[0]);
-  int16_t ay = be16(&data[2]);
-  int16_t az = be16(&data[4]);
-  int16_t temp = be16(&data[6]);
-  int16_t gx = be16(&data[8]);
-  int16_t gy = be16(&data[10]);
-  int16_t gz = be16(&data[12]);
-
   out->accel_g[0] = (float)ax / 8192.0f;
   out->accel_g[1] = (float)ay / 8192.0f;
   out->accel_g[2] = (float)az / 8192.0f;
-  out->gyro_dps[0] = (float)gx / 65.5f;
-  out->gyro_dps[1] = (float)gy / 65.5f;
-  out->gyro_dps[2] = (float)gz / 65.5f;
+  out->gyro_dps[0] = ((float)gx / 65.5f) - s_gyro_bias_dps[0];
+  out->gyro_dps[1] = ((float)gy / 65.5f) - s_gyro_bias_dps[1];
+  out->gyro_dps[2] = ((float)gz / 65.5f) - s_gyro_bias_dps[2];
   out->temp_centi_c = (int16_t)((((int32_t)temp * 100) / 340) + 3653);
   out->timestamp_ms = HAL_GetTick();
   out->healthy = true;

@@ -14,6 +14,7 @@
 #include "debug_uart.h"
 #include "i2c_bus.h"
 #include "main.h"
+#include "mixer_quad.h"
 #include "motor_pwm.h"
 #include "mpu6050.h"
 #include "safety.h"
@@ -32,9 +33,9 @@ static int32_t gain_to_milli(float gain)
 static void print_help(void)
 {
   DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag motormap");
-  DebugUart_WriteLine("cmd: motor unlock|stop|<1-4> <permille>, motors <permille>");
+  DebugUart_WriteLine("cmd: motoridle [0-200], motor unlock|stop|<1-4> <permille>, motors <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]");
-  DebugUart_WriteLine("cmd: arm disarm log on|off reboot");
+  DebugUart_WriteLine("cmd: gyrocal arm disarm log on|off reboot");
 }
 
 static const char *sysclk_source_name(void)
@@ -91,6 +92,9 @@ static void print_status(void)
                    (unsigned long)st.uptime_ms,
                    st.throttle_permille,
                    st.motor_test_unlocked ? 1U : 0U);
+  DebugUart_Printf("failsafe_flags=0x%04X motor_idle=%u\r\n",
+                   st.failsafe_flags,
+                   st.motor_idle_permille);
 }
 
 static void print_tasks(void)
@@ -251,6 +255,20 @@ static void print_motormap(void)
   DebugUart_WriteLine("motormap layout: M4 front-left, M2 front-right, M3 rear-left, M1 rear-right");
   DebugUart_WriteLine("motormap output: M1=PA8/CN6 M2=PA11/CN4 M3=PB6/CN3 M4=PB7/CN1");
   DebugUart_WriteLine("motormap spin: standard M1/M4=CW, M2/M3=CCW viewed from top");
+}
+
+static void cmd_motoridle(char *arg1)
+{
+  if (arg1 != NULL)
+  {
+    int value = atoi(arg1);
+    if (value < 0)
+    {
+      value = 0;
+    }
+    MixerQuad_SetMotorIdlePermille((uint16_t)value);
+  }
+  DebugUart_Printf("motoridle=%u permille\r\n", MixerQuad_GetMotorIdlePermille());
 }
 
 static bool parse_axis(const char *name, pid_axis_t *axis)
@@ -451,6 +469,10 @@ static void execute_line(char *line)
   {
     print_motormap();
   }
+  else if (strcmp(cmd, "motoridle") == 0)
+  {
+    cmd_motoridle(a1);
+  }
   else if (strcmp(cmd, "motor") == 0)
   {
     cmd_motor(a1, a2);
@@ -462,6 +484,13 @@ static void execute_line(char *line)
   else if (strcmp(cmd, "pid") == 0)
   {
     cmd_pid(a1, a2, a3, a4);
+  }
+  else if (strcmp(cmd, "gyrocal") == 0)
+  {
+    Safety_RequestDisarm();
+    DebugUart_WriteLine("gyrocal: keep aircraft still");
+    bool ok = Mpu6050_CalibrateGyro(200U);
+    DebugUart_Printf("gyrocal=%u\r\n", ok ? 1U : 0U);
   }
   else if (strcmp(cmd, "arm") == 0)
   {

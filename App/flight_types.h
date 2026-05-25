@@ -78,6 +78,8 @@ typedef struct {
   bool angle_mode;
   bool baro_mode;
   bool motor_test_unlocked;
+  uint16_t failsafe_flags;
+  uint16_t motor_idle_permille;
   uint16_t throttle_permille;
   float motor[APP_MOTOR_COUNT];
   uint32_t uptime_ms;
