@@ -117,6 +117,14 @@ void Safety_Update(void)
     MotorPwm_SetAll(0.0f);
   }
 
+  flight_status_t latest = Topic_GetStatus();
+  s_status.setpoint = latest.setpoint;
+  s_status.control = latest.control;
+  for (uint8_t i = 0U; i < APP_MOTOR_COUNT; i++)
+  {
+    s_status.motor[i] = latest.motor[i];
+  }
+
   Topic_PublishStatus(&s_status);
 }
 

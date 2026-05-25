@@ -71,18 +71,19 @@ static void StabilizerTask(void *argument)
     control_setpoint_t sp;
     control_output_t control = {0};
     float motor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    bool imu_updated = false;
 
     if (Mpu6050_Read(&imu))
     {
       Topic_PublishImu(&imu);
       EstimatorAttitude_Update(&imu, 0.002f, &attitude);
       Topic_PublishAttitude(&attitude);
+      imu_updated = true;
     }
     else
     {
       uint32_t now = BoardTime_Millis();
-      imu.healthy = false;
-      Topic_PublishImu(&imu);
+      imu = Topic_GetImu();
       attitude = Topic_GetAttitude();
 
       if ((now - last_imu_retry_ms) >= 1000U)
@@ -98,7 +99,14 @@ static void StabilizerTask(void *argument)
     flight_status_t status = Safety_GetStatus();
     baro_sample_t baro = Topic_GetBaro();
 
-    ControllerAttitude_Update(&attitude, &imu, &sp, 0.002f, &control);
+    if (imu_updated)
+    {
+      ControllerAttitude_Update(&attitude, &imu, &sp, 0.002f, &control);
+    }
+    else
+    {
+      control = status.control;
+    }
     control.altitude_permille = ControllerAltitude_Update(&baro,
                                                           &sp,
                                                           status.armed && status.baro_mode && attitude.healthy,
