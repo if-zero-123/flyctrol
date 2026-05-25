@@ -46,6 +46,11 @@ static float clampf_local(float v, float min_v, float max_v)
   return v;
 }
 
+static float absf_local(float v)
+{
+  return (v < 0.0f) ? -v : v;
+}
+
 static int16_t float_to_i16(float v)
 {
   if (v > 32767.0f)
@@ -146,20 +151,28 @@ static float update_rate_axis(bf_axis_t *state,
 
   float error = rate_sp_dps - gyro_dps;
   state->p_term = state->pid.kp * error;
-  if (allow_integrator)
+  float rate_delta = (state->filtered_rate_dps - state->pid.previous_measurement) / dt_s;
+  state->pid.previous_measurement = state->filtered_rate_dps;
+  state->d_term = -state->pid.kd * rate_delta;
+
+  float output_without_i = state->p_term + state->d_term;
+  float output_with_i = output_without_i + state->pid.integrator;
+  bool iterm_relaxed = absf_local(rate_sp_dps) > BOARD_ITERM_RELAX_RATE_DPS;
+  bool error_too_large = absf_local(error) > BOARD_ITERM_ERROR_LIMIT_DPS;
+  bool saturated_high = (output_with_i > (output_limit * 0.90f)) && (error > 0.0f);
+  bool saturated_low = (output_with_i < (-output_limit * 0.90f)) && (error < 0.0f);
+
+  if (allow_integrator && !iterm_relaxed && !error_too_large && !saturated_high && !saturated_low)
   {
     state->pid.integrator += state->pid.ki * error * dt_s;
     state->pid.integrator = clampf_local(state->pid.integrator, state->pid.i_min, state->pid.i_max);
   }
   else
   {
-    state->pid.integrator *= 0.90f;
+    state->pid.integrator *= BOARD_ITERM_DECAY;
   }
 
-  float rate_delta = (state->filtered_rate_dps - state->pid.previous_measurement) / dt_s;
-  state->pid.previous_measurement = state->filtered_rate_dps;
   state->i_term = state->pid.integrator;
-  state->d_term = -state->pid.kd * rate_delta;
   state->output = clampf_local(state->p_term + state->i_term + state->d_term,
                                -output_limit,
                                output_limit);
