@@ -7,11 +7,11 @@
 #define BF_PTERM_SCALE_NORM 0.000032029f
 #define BF_ITERM_SCALE_NORM 0.000244381f
 #define BF_DTERM_SCALE_NORM 0.000000529f
-#define BF_DTERM_LPF_HZ     100.0f
-#define BF_PID_LIMIT_RP     0.45f
-#define BF_PID_LIMIT_YAW    0.30f
-#define BF_ITERM_LIMIT_RP   0.20f
-#define BF_ITERM_LIMIT_YAW  0.18f
+#define BF_DTERM_LPF_HZ     70.0f
+#define BF_PID_LIMIT_RP     0.28f
+#define BF_PID_LIMIT_YAW    0.18f
+#define BF_ITERM_LIMIT_RP   0.08f
+#define BF_ITERM_LIMIT_YAW  0.06f
 
 typedef struct {
   app_pid_t pid;
@@ -171,7 +171,7 @@ static float update_rate_axis(bf_axis_t *state,
 
 void ControllerAttitude_Init(void)
 {
-  ControllerAttitude_UseBfDefaults();
+  ControllerAttitude_UseSafeDefaults();
   ControllerAttitude_SetYawGyroDirection(BOARD_YAW_GYRO_DIRECTION);
 }
 
@@ -326,6 +326,14 @@ bool ControllerAttitude_GetBfPid(pid_axis_t axis, uint8_t *p, uint8_t *i, uint8_
     *d = state->bf_d;
   }
   return true;
+}
+
+void ControllerAttitude_UseSafeDefaults(void)
+{
+  set_axis_bf(PID_AXIS_ROLL, 28U, 18U, 0U);
+  set_axis_bf(PID_AXIS_PITCH, 34U, 20U, 0U);
+  set_axis_bf(PID_AXIS_YAW, 80U, 20U, 0U);
+  ControllerAttitude_Reset();
 }
 
 void ControllerAttitude_UseBfDefaults(void)

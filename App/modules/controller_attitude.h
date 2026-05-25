@@ -34,6 +34,7 @@ bool ControllerAttitude_SetPid(pid_axis_t axis, float kp, float ki, float kd);
 bool ControllerAttitude_GetPid(pid_axis_t axis, app_pid_t *out);
 bool ControllerAttitude_SetBfPid(pid_axis_t axis, uint8_t p, uint8_t i, uint8_t d);
 bool ControllerAttitude_GetBfPid(pid_axis_t axis, uint8_t *p, uint8_t *i, uint8_t *d);
+void ControllerAttitude_UseSafeDefaults(void);
 void ControllerAttitude_UseBfDefaults(void);
 void ControllerAttitude_GetDebug(controller_attitude_debug_t *out);
 

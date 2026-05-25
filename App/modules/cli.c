@@ -54,7 +54,7 @@ static void print_help(void)
   DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
   DebugUart_WriteLine("cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]");
   DebugUart_WriteLine("cmd: motoridle [0-200], motormax [700-1000], motor unlock|stop|<1-4> <permille>");
-  DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <P> <I> <D>|default] uses BF-style units");
+  DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <P> <I> <D>|safe|bf] uses BF-style units");
   DebugUart_WriteLine("cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm log on|off reboot");
 }
 
@@ -536,7 +536,15 @@ static void cmd_pid(char *axis_name, char *kp_s, char *ki_s, char *kd_s)
     return;
   }
 
-  if (strcmp(axis_name, "default") == 0)
+  if ((strcmp(axis_name, "safe") == 0) || (strcmp(axis_name, "default") == 0))
+  {
+    ControllerAttitude_UseSafeDefaults();
+    DebugUart_WriteLine("pid default=safe first-flight");
+    cmd_pid(NULL, NULL, NULL, NULL);
+    return;
+  }
+
+  if (strcmp(axis_name, "bf") == 0)
   {
     ControllerAttitude_UseBfDefaults();
     DebugUart_WriteLine("pid default=BF3.2 BEEBRAIN brushed");
@@ -546,7 +554,7 @@ static void cmd_pid(char *axis_name, char *kp_s, char *ki_s, char *kd_s)
 
   if (!parse_axis(axis_name, &axis) || (kp_s == NULL) || (ki_s == NULL) || (kd_s == NULL))
   {
-    DebugUart_WriteLine("usage: pid roll|pitch|yaw <P> <I> <D> or pid default");
+    DebugUart_WriteLine("usage: pid roll|pitch|yaw <P> <I> <D> or pid safe|bf");
     return;
   }
 
