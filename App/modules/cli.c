@@ -200,9 +200,12 @@ static void print_rcmap(void)
 static void print_batt(void)
 {
   battery_status_t batt = Topic_GetBattery();
-  DebugUart_Printf("batt raw=%u voltage=%umV percent=%u low=%u critical=%u\r\n",
+  uint32_t vadc_mv = ((uint32_t)batt.adc_raw * BOARD_ADC_REF_MV) / BOARD_ADC_MAX_COUNTS;
+  DebugUart_Printf("batt raw=%u adc=%lumV voltage=%umV cells=%u percent=%u low=%u critical=%u\r\n",
                    batt.adc_raw,
+                   (unsigned long)vadc_mv,
                    batt.voltage_mv,
+                   BOARD_BATTERY_CELLS,
                    batt.percent,
                    batt.low ? 1U : 0U,
                    batt.critical ? 1U : 0U);

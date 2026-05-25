@@ -15,7 +15,7 @@ baro ok=1 temp=29.88C pressure=100820Pa altitude=8cm
 rc connected=1 failsafe=0 arm=0 baro=0 age=12ms
 rcmap order=AETR roll=CH1 pitch=CH2 throttle=CH3 yaw=CH4 arm=CH5 baro=CH6 raw_min=172 raw_mid=992 raw_max=1811
 stick r=0 p=0 y=0 t=0 raw=992,992,172,992,988,988,172,172,172,172,172,172,172,172,172,172
-batt raw=1125 voltage=3990mV percent=76 low=0 critical=0
+batt raw=948 adc=764mV voltage=8404mV cells=2 percent=100 low=0 critical=0
 heap free=7816 min=7040 rxdrop=0
 clock src=PLL pll=HSE sys=72000000Hz hclk=72000000Hz pclk1=36000000Hz pclk2=72000000Hz fallback=0
 roll kp=3500 ki=0 kd=45 milli
@@ -38,7 +38,8 @@ class ParserTest(unittest.TestCase):
         self.assertTrue(state["imu"]["ok"])
         self.assertAlmostEqual(state["attitude"]["roll"], 0.24)
         self.assertEqual(state["baro"]["pressure_pa"], 100820)
-        self.assertEqual(state["battery"]["voltage_mv"], 3990)
+        self.assertEqual(state["battery"]["voltage_mv"], 8404)
+        self.assertEqual(state["battery"]["cells"], 2)
         self.assertEqual(state["clock"]["pll"], "HSE")
         self.assertEqual(state["clock"]["sys_hz"], 72000000)
         self.assertFalse(state["clock"]["fallback"])

@@ -265,15 +265,17 @@ class FlightCliParser:
             self.state["rcmap"] = pairs
 
     def _parse_battery(self, text: str) -> None:
-        m = re.search(r"batt raw=(\d+) voltage=(\d+)mV percent=(\d+) low=(\d+) critical=(\d+)", text)
+        m = re.search(r"batt raw=(\d+)(?: adc=(\d+)mV)? voltage=(\d+)mV(?: cells=(\d+))? percent=(\d+) low=(\d+) critical=(\d+)", text)
         if not m:
             return
         self.state["battery"] = {
             "raw": int(m.group(1)),
-            "voltage_mv": int(m.group(2)),
-            "percent": int(m.group(3)),
-            "low": bool(int(m.group(4))),
-            "critical": bool(int(m.group(5))),
+            "adc_mv": int(m.group(2) or 0),
+            "voltage_mv": int(m.group(3)),
+            "cells": int(m.group(4) or 0),
+            "percent": int(m.group(5)),
+            "low": bool(int(m.group(6))),
+            "critical": bool(int(m.group(7))),
         }
 
     def _parse_heap(self, text: str) -> None:

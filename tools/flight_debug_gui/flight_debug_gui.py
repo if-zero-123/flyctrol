@@ -999,7 +999,9 @@ class FlightDebugGui(tk.Tk):
     def _battery_text(batt: object) -> str:
         if not isinstance(batt, dict) or not batt:
             return "等待"
-        return f"{batt.get('voltage_mv', '-')}mV {batt.get('percent', '-')}% low={int(bool(batt.get('low')))} critical={int(bool(batt.get('critical')))}"
+        adc = batt.get("adc_mv", "-")
+        cells = batt.get("cells", "-")
+        return f"{batt.get('voltage_mv', '-')}mV adc={adc}mV {cells}S {batt.get('percent', '-')}% low={int(bool(batt.get('low')))} critical={int(bool(batt.get('critical')))}"
 
     @staticmethod
     def _rc_text(rc: object) -> str:

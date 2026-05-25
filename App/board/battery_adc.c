@@ -15,19 +15,23 @@ bool BatteryAdc_Read(battery_status_t *out)
     return false;
   }
 
-  if (HAL_ADC_Start(&hadc1) != HAL_OK)
+  uint32_t raw_sum = 0U;
+  for (uint8_t i = 0U; i < BOARD_BATTERY_ADC_SAMPLES; i++)
   {
-    return false;
-  }
-  if (HAL_ADC_PollForConversion(&hadc1, 5U) != HAL_OK)
-  {
+    if (HAL_ADC_Start(&hadc1) != HAL_OK)
+    {
+      return false;
+    }
+    if (HAL_ADC_PollForConversion(&hadc1, 5U) != HAL_OK)
+    {
+      (void)HAL_ADC_Stop(&hadc1);
+      return false;
+    }
+    raw_sum += HAL_ADC_GetValue(&hadc1);
     (void)HAL_ADC_Stop(&hadc1);
-    return false;
   }
 
-  uint32_t raw = HAL_ADC_GetValue(&hadc1);
-  (void)HAL_ADC_Stop(&hadc1);
-
+  uint32_t raw = (raw_sum + (BOARD_BATTERY_ADC_SAMPLES / 2U)) / BOARD_BATTERY_ADC_SAMPLES;
   uint32_t vadc_mv = (raw * BOARD_ADC_REF_MV) / BOARD_ADC_MAX_COUNTS;
   uint32_t vbat_mv = (vadc_mv * BOARD_BATTERY_DIVIDER_NUM) / BOARD_BATTERY_DIVIDER_DEN;
   uint32_t percent = 0U;

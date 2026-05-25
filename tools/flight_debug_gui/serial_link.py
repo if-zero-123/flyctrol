@@ -218,7 +218,7 @@ class FakeSerialBackend(SerialBackend):
         if cmd == "rc":
             return "rc connected=1 failsafe=0 arm=0 baro=0 age=12ms\r\nstick r=0 p=0 y=0 t=0 raw=992,992,172,992,988,988,172,172,172,172,172,172,172,172,172,172", logging
         if cmd == "batt":
-            return "batt raw=1125 voltage=3990mV percent=76 low=0 critical=0", logging
+            return "batt raw=948 adc=764mV voltage=8404mV cells=2 percent=100 low=0 critical=0", logging
         if cmd == "heap":
             return "heap free=7816 min=7040 rxdrop=0", logging
         if cmd == "tasks":
