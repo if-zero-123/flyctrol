@@ -31,7 +31,7 @@ static int32_t gain_to_milli(float gain)
 
 static void print_help(void)
 {
-  DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt");
+  DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
   DebugUart_WriteLine("cmd: motor unlock|stop|<1-4> <permille>, motors <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]");
   DebugUart_WriteLine("cmd: arm disarm log on|off reboot");
@@ -209,6 +209,40 @@ static void print_batt(void)
                    batt.percent,
                    batt.low ? 1U : 0U,
                    batt.critical ? 1U : 0U);
+}
+
+static uint32_t vbat_mv_to_raw(uint32_t vbat_mv)
+{
+  uint32_t vadc_mv = (vbat_mv * BOARD_BATTERY_DIVIDER_DEN) / BOARD_BATTERY_DIVIDER_NUM;
+  return (vadc_mv * BOARD_ADC_MAX_COUNTS) / BOARD_ADC_REF_MV;
+}
+
+static void print_battdiag(void)
+{
+  battery_status_t batt = Topic_GetBattery();
+  uint32_t vadc_mv = ((uint32_t)batt.adc_raw * BOARD_ADC_REF_MV) / BOARD_ADC_MAX_COUNTS;
+
+  DebugUart_WriteLine("battdiag path=BAT-R29(100k)-ADC_BATT/PA4-R28(10k)-GND");
+  DebugUart_Printf("battdiag ratio=%lu/%lu cells=%u vref=%umV adcmax=%u\r\n",
+                   (unsigned long)BOARD_BATTERY_DIVIDER_NUM,
+                   (unsigned long)BOARD_BATTERY_DIVIDER_DEN,
+                   BOARD_BATTERY_CELLS,
+                   BOARD_ADC_REF_MV,
+                   BOARD_ADC_MAX_COUNTS);
+  DebugUart_Printf("battdiag expected_raw empty=%lu low=%lu full=%lu\r\n",
+                   (unsigned long)vbat_mv_to_raw(BOARD_BATT_EMPTY_MV),
+                   (unsigned long)vbat_mv_to_raw(BOARD_BATT_LOW_MV),
+                   (unsigned long)vbat_mv_to_raw(BOARD_BATT_FULL_MV));
+  DebugUart_Printf("battdiag now raw=%u adc=%lumV voltage=%umV\r\n",
+                   batt.adc_raw,
+                   (unsigned long)vadc_mv,
+                   batt.voltage_mv);
+  DebugUart_Printf("battdiag regs smpr2=0x%08lX sqr3=0x%08lX cr2=0x%08lX sr=0x%08lX gpioa_crl=0x%08lX\r\n",
+                   (unsigned long)ADC1->SMPR2,
+                   (unsigned long)ADC1->SQR3,
+                   (unsigned long)ADC1->CR2,
+                   (unsigned long)ADC1->SR,
+                   (unsigned long)GPIOA->CRL);
 }
 
 static bool parse_axis(const char *name, pid_axis_t *axis)
@@ -400,6 +434,10 @@ static void execute_line(char *line)
   else if (strcmp(cmd, "batt") == 0)
   {
     print_batt();
+  }
+  else if ((strcmp(cmd, "battdiag") == 0) || (strcmp(cmd, "adc") == 0))
+  {
+    print_battdiag();
   }
   else if (strcmp(cmd, "motor") == 0)
   {
