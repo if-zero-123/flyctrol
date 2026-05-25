@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "board_config.h"
 #include "i2c_bus.h"
 #include "main.h"
 
@@ -19,6 +20,9 @@ static float s_gyro_bias_dps[3];
 static float s_accel_bias_g[3];
 static uint32_t s_read_ok_count;
 static uint32_t s_read_fail_count;
+static bool s_filter_ready;
+static float s_accel_filtered_g[3];
+static float s_gyro_filtered_dps[3];
 
 static bool write_reg(uint8_t reg, uint8_t value)
 {
@@ -140,6 +144,7 @@ bool Mpu6050_CalibrateGyro(uint16_t samples)
   s_gyro_bias_dps[0] = ((float)gx_sum / (float)ok_count) / 65.5f;
   s_gyro_bias_dps[1] = ((float)gy_sum / (float)ok_count) / 65.5f;
   s_gyro_bias_dps[2] = ((float)gz_sum / (float)ok_count) / 65.5f;
+  s_filter_ready = false;
   s_healthy = true;
   return true;
 }
@@ -180,6 +185,7 @@ bool Mpu6050_CalibrateAccel(uint16_t samples)
   s_accel_bias_g[0] = ((float)ax_sum / (float)ok_count) / 8192.0f;
   s_accel_bias_g[1] = ((float)ay_sum / (float)ok_count) / 8192.0f;
   s_accel_bias_g[2] = (((float)az_sum / (float)ok_count) / 8192.0f) - 1.0f;
+  s_filter_ready = false;
   s_healthy = true;
   return true;
 }
@@ -221,6 +227,28 @@ bool Mpu6050_Read(imu_sample_t *out)
   out->gyro_dps[0] = ((float)gx / 65.5f) - s_gyro_bias_dps[0];
   out->gyro_dps[1] = ((float)gy / 65.5f) - s_gyro_bias_dps[1];
   out->gyro_dps[2] = ((float)gz / 65.5f) - s_gyro_bias_dps[2];
+  if (!s_filter_ready)
+  {
+    for (uint8_t i = 0U; i < 3U; i++)
+    {
+      s_accel_filtered_g[i] = out->accel_g[i];
+      s_gyro_filtered_dps[i] = out->gyro_dps[i];
+    }
+    s_filter_ready = true;
+  }
+  else
+  {
+    for (uint8_t i = 0U; i < 3U; i++)
+    {
+      s_accel_filtered_g[i] += BOARD_IMU_ACCEL_LPF_ALPHA * (out->accel_g[i] - s_accel_filtered_g[i]);
+      s_gyro_filtered_dps[i] += BOARD_IMU_GYRO_LPF_ALPHA * (out->gyro_dps[i] - s_gyro_filtered_dps[i]);
+    }
+  }
+  for (uint8_t i = 0U; i < 3U; i++)
+  {
+    out->accel_g[i] = s_accel_filtered_g[i];
+    out->gyro_dps[i] = s_gyro_filtered_dps[i];
+  }
   out->temp_centi_c = (int16_t)((((int32_t)temp * 100) / 340) + 3653);
   out->timestamp_ms = HAL_GetTick();
   out->healthy = true;

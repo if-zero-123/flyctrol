@@ -83,6 +83,7 @@ void Safety_Update(void)
   s_status.baro_mode = rc.baro_mode && baro.healthy;
   s_status.throttle_permille = rc.throttle;
   s_status.motor_idle_permille = MixerQuad_GetMotorIdlePermille();
+  s_status.motor_max_permille = MixerQuad_GetMotorMaxPermille();
   s_status.uptime_ms = now;
   s_status.failsafe_flags = failsafe_flags;
   s_status.failsafe = failsafe_flags != 0U;

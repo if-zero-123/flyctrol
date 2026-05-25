@@ -200,13 +200,13 @@ class FakeSerialBackend(SerialBackend):
             return (
                 "cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag\r\n"
                 "cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]\r\n"
-                "cmd: motoridle [0-200], motor unlock|stop|<1-4> <permille>, motors <permille>\r\n"
+                "cmd: motoridle [0-200], motormax [700-1000], motor unlock|stop|<1-4> <permille>\r\n"
                 "cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]\r\n"
-                "cmd: gyrocal acccal imucal arm disarm log on|off reboot",
+                "cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm log on|off reboot",
                 logging,
             )
         if cmd == "status":
-            return "armed=0 failsafe=0 rc=1 imu=1 baro=1 mode angle=1 baro=0\r\nuptime=12345ms throttle=0 motor_test=0", logging
+            return "armed=0 failsafe=0 rc=1 imu=1 baro=1 mode angle=1 baro=0\r\nuptime=12345ms throttle=0 motor_test=0\r\nfailsafe_flags=0x0000 last_disarm=0x0000 motor_idle=120 motor_max=1000", logging
         if cmd == "clock":
             return "clock src=PLL pll=HSE sys=72000000Hz hclk=72000000Hz pclk1=36000000Hz pclk2=72000000Hz fallback=0", logging
         if cmd == "i2cscan":
@@ -257,6 +257,16 @@ class FakeSerialBackend(SerialBackend):
         if cmd.startswith("motoridle"):
             parts = cmd.split()
             return f"motoridle={parts[1] if len(parts) > 1 else 120} permille", logging
+        if cmd.startswith("motormax"):
+            parts = cmd.split()
+            return f"motormax={parts[1] if len(parts) > 1 else 1000} permille", logging
+        if cmd.startswith("trim"):
+            parts = cmd.split()
+            roll = parts[1] if len(parts) > 1 else "0"
+            pitch = parts[2] if len(parts) > 2 else "0"
+            return f"trim roll_cd={roll} pitch_cd={pitch}", logging
+        if cmd == "leveltrim":
+            return "trim roll_cd=0 pitch_cd=0", logging
         if cmd == "heap":
             return "heap free=7816 min=7040 rxdrop=0", logging
         if cmd == "tasks":

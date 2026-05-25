@@ -81,6 +81,7 @@ typedef struct {
   uint16_t failsafe_flags;
   uint16_t last_disarm_flags;
   uint16_t motor_idle_permille;
+  uint16_t motor_max_permille;
   uint16_t throttle_permille;
   control_setpoint_t setpoint;
   control_output_t control;

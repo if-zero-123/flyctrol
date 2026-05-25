@@ -3,6 +3,8 @@
 #include <stddef.h>
 
 static attitude_t s_attitude;
+static float s_roll_trim_deg;
+static float s_pitch_trim_deg;
 
 static float absf_local(float v)
 {
@@ -75,4 +77,24 @@ void EstimatorAttitude_Update(const imu_sample_t *imu, float dt_s, attitude_t *o
   s_attitude.healthy = true;
   s_attitude.timestamp_ms = imu->timestamp_ms;
   *out = s_attitude;
+  out->roll_deg -= s_roll_trim_deg;
+  out->pitch_deg -= s_pitch_trim_deg;
+}
+
+void EstimatorAttitude_SetTrim(float roll_deg, float pitch_deg)
+{
+  s_roll_trim_deg = roll_deg;
+  s_pitch_trim_deg = pitch_deg;
+}
+
+void EstimatorAttitude_GetTrim(float *roll_deg, float *pitch_deg)
+{
+  if (roll_deg != NULL)
+  {
+    *roll_deg = s_roll_trim_deg;
+  }
+  if (pitch_deg != NULL)
+  {
+    *pitch_deg = s_pitch_trim_deg;
+  }
 }

@@ -53,9 +53,9 @@ static void print_help(void)
 {
   DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
   DebugUart_WriteLine("cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]");
-  DebugUart_WriteLine("cmd: motoridle [0-200], motor unlock|stop|<1-4> <permille>, motors <permille>");
+  DebugUart_WriteLine("cmd: motoridle [0-200], motormax [700-1000], motor unlock|stop|<1-4> <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]");
-  DebugUart_WriteLine("cmd: gyrocal acccal imucal arm disarm log on|off reboot");
+  DebugUart_WriteLine("cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm log on|off reboot");
 }
 
 static const char *sysclk_source_name(void)
@@ -112,10 +112,11 @@ static void print_status(void)
                    (unsigned long)st.uptime_ms,
                    st.throttle_permille,
                    st.motor_test_unlocked ? 1U : 0U);
-  DebugUart_Printf("failsafe_flags=0x%04X last_disarm=0x%04X motor_idle=%u\r\n",
+  DebugUart_Printf("failsafe_flags=0x%04X last_disarm=0x%04X motor_idle=%u motor_max=%u\r\n",
                    st.failsafe_flags,
                    st.last_disarm_flags,
-                   st.motor_idle_permille);
+                   st.motor_idle_permille,
+                   st.motor_max_permille);
 }
 
 static void print_tasks(void)
@@ -292,6 +293,9 @@ static void print_control(void)
   attitude_t att = Topic_GetAttitude();
   imu_sample_t imu = Topic_GetImu();
   int8_t yawdir = ControllerAttitude_GetYawGyroDirection();
+  float trim_roll = 0.0f;
+  float trim_pitch = 0.0f;
+  EstimatorAttitude_GetTrim(&trim_roll, &trim_pitch);
 
   DebugUart_Printf("control status arm=%u fs=%u flags=0x%04X rc=%u imu=%u imu_age=%lums yawdir=%d\r\n",
                    st.armed ? 1U : 0U,
@@ -312,6 +316,9 @@ static void print_control(void)
                    (long)deg_to_cdeg(att.pitch_deg),
                    (long)deg_to_cdeg(att.yaw_deg),
                    att.healthy ? 1U : 0U);
+  DebugUart_Printf("control trim_cd r=%ld p=%ld\r\n",
+                   (long)deg_to_cdeg(trim_roll),
+                   (long)deg_to_cdeg(trim_pitch));
   DebugUart_Printf("control out_milli r=%ld p=%ld y=%ld alt=%d\r\n",
                    (long)float_to_milli(st.control.roll),
                    (long)float_to_milli(st.control.pitch),
@@ -407,10 +414,50 @@ static void cmd_motoridle(char *arg1)
   DebugUart_Printf("motoridle=%u permille\r\n", MixerQuad_GetMotorIdlePermille());
 }
 
+static void cmd_motormax(char *arg1)
+{
+  if (arg1 != NULL)
+  {
+    int value = atoi(arg1);
+    if (value < 0)
+    {
+      value = 0;
+    }
+    MixerQuad_SetMotorMaxPermille((uint16_t)value);
+  }
+  DebugUart_Printf("motormax=%u permille\r\n", MixerQuad_GetMotorMaxPermille());
+}
+
+static void cmd_trim(char *roll_s, char *pitch_s)
+{
+  if ((roll_s != NULL) && (pitch_s != NULL))
+  {
+    EstimatorAttitude_SetTrim((float)atoi(roll_s) / 100.0f,
+                              (float)atoi(pitch_s) / 100.0f);
+  }
+  float roll = 0.0f;
+  float pitch = 0.0f;
+  EstimatorAttitude_GetTrim(&roll, &pitch);
+  DebugUart_Printf("trim roll_cd=%ld pitch_cd=%ld\r\n",
+                   (long)deg_to_cdeg(roll),
+                   (long)deg_to_cdeg(pitch));
+}
+
+static void cmd_leveltrim(void)
+{
+  attitude_t att = Topic_GetAttitude();
+  float trim_roll = 0.0f;
+  float trim_pitch = 0.0f;
+  EstimatorAttitude_GetTrim(&trim_roll, &trim_pitch);
+  EstimatorAttitude_SetTrim(trim_roll + att.roll_deg, trim_pitch + att.pitch_deg);
+  cmd_trim(NULL, NULL);
+}
+
 static void reset_attitude_after_cal(bool ok)
 {
   if (ok)
   {
+    EstimatorAttitude_SetTrim(0.0f, 0.0f);
     EstimatorAttitude_Init();
   }
 }
@@ -628,6 +675,18 @@ static void execute_line(char *line)
   else if (strcmp(cmd, "motoridle") == 0)
   {
     cmd_motoridle(a1);
+  }
+  else if (strcmp(cmd, "motormax") == 0)
+  {
+    cmd_motormax(a1);
+  }
+  else if (strcmp(cmd, "trim") == 0)
+  {
+    cmd_trim(a1, a2);
+  }
+  else if (strcmp(cmd, "leveltrim") == 0)
+  {
+    cmd_leveltrim();
   }
   else if (strcmp(cmd, "motor") == 0)
   {

@@ -3,6 +3,7 @@
 #include "board_config.h"
 
 static uint16_t s_motor_idle_permille = BOARD_MOTOR_IDLE_PERMILLE;
+static uint16_t s_motor_max_permille = BOARD_MOTOR_MAX_PERMILLE;
 
 static float clampf_local(float v, float min_v, float max_v)
 {
@@ -17,7 +18,7 @@ static float clampf_local(float v, float min_v, float max_v)
   return v;
 }
 
-static void normalize_to_idle(float motor_out[4], float idle)
+static void normalize_to_range(float motor_out[4], float idle, float max_out)
 {
   float min_v = motor_out[0];
   float max_v = motor_out[0];
@@ -34,7 +35,7 @@ static void normalize_to_idle(float motor_out[4], float idle)
   }
 
   float span = max_v - min_v;
-  float available = 1.0f - idle;
+  float available = max_out - idle;
   if ((span > available) && (span > 0.0001f))
   {
     float scale = available / span;
@@ -50,9 +51,9 @@ static void normalize_to_idle(float motor_out[4], float idle)
     {
       offset = idle - min_v;
     }
-    if ((max_v + offset) > 1.0f)
+    if ((max_v + offset) > max_out)
     {
-      offset = 1.0f - max_v;
+      offset = max_out - max_v;
     }
     for (uint8_t i = 0U; i < 4U; i++)
     {
@@ -62,7 +63,7 @@ static void normalize_to_idle(float motor_out[4], float idle)
 
   for (uint8_t i = 0U; i < 4U; i++)
   {
-    motor_out[i] = clampf_local(motor_out[i], idle, 1.0f);
+    motor_out[i] = clampf_local(motor_out[i], idle, max_out);
   }
 }
 
@@ -73,11 +74,33 @@ void MixerQuad_SetMotorIdlePermille(uint16_t permille)
     permille = BOARD_MOTOR_IDLE_MAX_PERMILLE;
   }
   s_motor_idle_permille = permille;
+  if (s_motor_max_permille < s_motor_idle_permille)
+  {
+    s_motor_max_permille = s_motor_idle_permille;
+  }
 }
 
 uint16_t MixerQuad_GetMotorIdlePermille(void)
 {
   return s_motor_idle_permille;
+}
+
+void MixerQuad_SetMotorMaxPermille(uint16_t permille)
+{
+  if (permille > 1000U)
+  {
+    permille = 1000U;
+  }
+  if (permille < s_motor_idle_permille)
+  {
+    permille = s_motor_idle_permille;
+  }
+  s_motor_max_permille = permille;
+}
+
+uint16_t MixerQuad_GetMotorMaxPermille(void)
+{
+  return s_motor_max_permille;
 }
 
 void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, float motor_out[4])
@@ -102,8 +125,13 @@ void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, 
   {
     throttle = (int32_t)idle_permille;
   }
+  if (throttle > (int32_t)s_motor_max_permille)
+  {
+    throttle = (int32_t)s_motor_max_permille;
+  }
 
   float idle = (float)idle_permille / 1000.0f;
+  float max_out = (float)s_motor_max_permille / 1000.0f;
   float t = (float)throttle / 1000.0f;
   float r = control->roll;
   float p = control->pitch;
@@ -113,5 +141,5 @@ void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, 
   motor_out[1] = t - r - p + y; /* M2 front-right, CCW */
   motor_out[2] = t + r + p + y; /* M3 rear-left, CCW */
   motor_out[3] = t + r - p - y; /* M4 front-left, CW */
-  normalize_to_idle(motor_out, idle);
+  normalize_to_range(motor_out, idle, max_out);
 }

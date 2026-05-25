@@ -51,6 +51,10 @@ static bool valid_address(uint8_t address)
 static int16_t normalize_stick(uint16_t raw)
 {
   int32_t v = ((int32_t)raw - 992) * 1000 / 820;
+  if ((v > -BOARD_RC_DEADBAND) && (v < BOARD_RC_DEADBAND))
+  {
+    v = 0;
+  }
   if (v < -1000)
   {
     v = -1000;
