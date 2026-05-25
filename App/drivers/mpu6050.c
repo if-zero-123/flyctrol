@@ -24,6 +24,18 @@ static bool s_filter_ready;
 static float s_accel_filtered_g[3];
 static float s_gyro_filtered_dps[3];
 
+static float pt1_alpha(float cutoff_hz)
+{
+  const float pi = 3.14159265f;
+  const float dt_s = 1.0f / (float)BOARD_CONTROL_LOOP_HZ;
+  if (cutoff_hz <= 0.0f)
+  {
+    return 1.0f;
+  }
+  float rc = 1.0f / (2.0f * pi * cutoff_hz);
+  return dt_s / (dt_s + rc);
+}
+
 static bool write_reg(uint8_t reg, uint8_t value)
 {
   if (!I2cBus_Lock(5U))
@@ -99,8 +111,8 @@ bool Mpu6050_Init(void)
   bool ok = true;
   ok = ok && write_reg(MPU6050_PWR_MGMT_1, 0x01U);
   HAL_Delay(10U);
-  ok = ok && write_reg(MPU6050_SMPLRT_DIV, 0x00U);
-  ok = ok && write_reg(MPU6050_CONFIG, 0x03U);
+  ok = ok && write_reg(MPU6050_SMPLRT_DIV, 0x01U);
+  ok = ok && write_reg(MPU6050_CONFIG, 0x02U);
   ok = ok && write_reg(MPU6050_GYRO_CONFIG, 0x08U);
   ok = ok && write_reg(MPU6050_ACCEL_CONFIG, 0x08U);
 
@@ -238,10 +250,12 @@ bool Mpu6050_Read(imu_sample_t *out)
   }
   else
   {
+    float accel_alpha = pt1_alpha(BOARD_IMU_ACCEL_LPF_HZ);
+    float gyro_alpha = pt1_alpha(BOARD_IMU_GYRO_LPF_HZ);
     for (uint8_t i = 0U; i < 3U; i++)
     {
-      s_accel_filtered_g[i] += BOARD_IMU_ACCEL_LPF_ALPHA * (out->accel_g[i] - s_accel_filtered_g[i]);
-      s_gyro_filtered_dps[i] += BOARD_IMU_GYRO_LPF_ALPHA * (out->gyro_dps[i] - s_gyro_filtered_dps[i]);
+      s_accel_filtered_g[i] += accel_alpha * (out->accel_g[i] - s_accel_filtered_g[i]);
+      s_gyro_filtered_dps[i] += gyro_alpha * (out->gyro_dps[i] - s_gyro_filtered_dps[i]);
     }
   }
   for (uint8_t i = 0U; i < 3U; i++)

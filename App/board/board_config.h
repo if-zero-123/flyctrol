@@ -32,8 +32,12 @@
 #define BOARD_YAW_GYRO_DIRECTION      (-1)
 #define BOARD_RC_DEADBAND             20
 #define BOARD_ARM_SWITCH_DEBOUNCE_MS  80U
-#define BOARD_IMU_GYRO_LPF_ALPHA      0.45f
-#define BOARD_IMU_ACCEL_LPF_ALPHA     0.30f
+#define BOARD_IMU_GYRO_LPF_HZ         80.0f
+#define BOARD_IMU_ACCEL_LPF_HZ        15.0f
+#define BOARD_IMU_DCM_KP              2.5f
+#define BOARD_IMU_DCM_KI              0.05f
+#define BOARD_IMU_ACC_MIN_G_SQ        0.72f
+#define BOARD_IMU_ACC_MAX_G_SQ        1.35f
 #define BOARD_ARM_THROTTLE_MAX        50U
 #define BOARD_RC_TIMEOUT_MS           300U
 #define BOARD_IMU_FAILSAFE_TIMEOUT_MS 250U

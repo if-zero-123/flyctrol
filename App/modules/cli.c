@@ -187,6 +187,11 @@ static void print_imu(void)
                    (unsigned long)read_ok,
                    (unsigned long)read_fail,
                    (unsigned long)(HAL_GetTick() - imu.timestamp_ms));
+  DebugUart_Printf("imu estimator=mahony gyro_lpf=%uHz accel_lpf=%uHz acc_gate=%ld-%ld%%\r\n",
+                   (unsigned int)BOARD_IMU_GYRO_LPF_HZ,
+                   (unsigned int)BOARD_IMU_ACCEL_LPF_HZ,
+                   (long)(BOARD_IMU_ACC_MIN_G_SQ * 100.0f),
+                   (long)(BOARD_IMU_ACC_MAX_G_SQ * 100.0f));
 }
 
 static void print_baro(void)
