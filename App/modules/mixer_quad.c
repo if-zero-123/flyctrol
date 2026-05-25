@@ -35,8 +35,8 @@ void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, 
   float p = control->pitch;
   float y = control->yaw;
 
-  motor_out[0] = clamp_unit(t - r + p - y);
-  motor_out[1] = clamp_unit(t - r - p + y);
+  motor_out[0] = clamp_unit(t - r - p + y);
+  motor_out[1] = clamp_unit(t - r + p - y);
   motor_out[2] = clamp_unit(t + r - p - y);
   motor_out[3] = clamp_unit(t + r + p + y);
 }

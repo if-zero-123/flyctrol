@@ -31,7 +31,7 @@ static int32_t gain_to_milli(float gain)
 
 static void print_help(void)
 {
-  DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
+  DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag motormap");
   DebugUart_WriteLine("cmd: motor unlock|stop|<1-4> <permille>, motors <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]");
   DebugUart_WriteLine("cmd: arm disarm log on|off reboot");
@@ -245,6 +245,14 @@ static void print_battdiag(void)
                    (unsigned long)GPIOA->CRL);
 }
 
+static void print_motormap(void)
+{
+  DebugUart_WriteLine("motormap QuadX nose-forward:");
+  DebugUart_WriteLine("motormap layout: M4 front-left, M2 front-right, M3 rear-left, M1 rear-right");
+  DebugUart_WriteLine("motormap output: M1=PA8/CN6 M2=PA11/CN4 M3=PB6/CN3 M4=PB7/CN1");
+  DebugUart_WriteLine("motormap spin: standard M1/M4=CW, M2/M3=CCW viewed from top");
+}
+
 static bool parse_axis(const char *name, pid_axis_t *axis)
 {
   if ((name == NULL) || (axis == NULL))
@@ -438,6 +446,10 @@ static void execute_line(char *line)
   else if ((strcmp(cmd, "battdiag") == 0) || (strcmp(cmd, "adc") == 0))
   {
     print_battdiag();
+  }
+  else if (strcmp(cmd, "motormap") == 0)
+  {
+    print_motormap();
   }
   else if (strcmp(cmd, "motor") == 0)
   {
