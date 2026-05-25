@@ -66,6 +66,7 @@ void App_Start(void)
   AppBootStage_Set(48U);
   App_CreateTasks();
   AppBootStage_Set(49U);
+  DebugUart_WriteLine("init: done");
 }
 
 void App_SetTelemetryLog(bool enabled)

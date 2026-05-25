@@ -822,6 +822,10 @@ void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
   s_boot_stage = 20U;
+  {
+    const uint8_t task_msg[] = "defaultTask start\r\n";
+    (void)HAL_UART_Transmit(&huart1, (uint8_t *)task_msg, sizeof(task_msg) - 1U, 200U);
+  }
   App_Start();
   s_boot_stage = 21U;
   vTaskDelete(NULL);
