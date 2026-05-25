@@ -8,10 +8,10 @@
 #define BF_ITERM_SCALE_NORM 0.000244381f
 #define BF_DTERM_SCALE_NORM 0.000000529f
 #define BF_DTERM_LPF_HZ     70.0f
-#define BF_PID_LIMIT_RP     0.18f
-#define BF_PID_LIMIT_YAW    0.08f
-#define BF_ITERM_LIMIT_RP   0.05f
-#define BF_ITERM_LIMIT_YAW  0.03f
+#define BF_PID_LIMIT_RP     0.22f
+#define BF_PID_LIMIT_YAW    0.10f
+#define BF_ITERM_LIMIT_RP   0.07f
+#define BF_ITERM_LIMIT_YAW  0.04f
 
 typedef struct {
   app_pid_t pid;
@@ -330,9 +330,9 @@ bool ControllerAttitude_GetBfPid(pid_axis_t axis, uint8_t *p, uint8_t *i, uint8_
 
 void ControllerAttitude_UseSafeDefaults(void)
 {
-  set_axis_bf(PID_AXIS_ROLL, 24U, 12U, 0U);
-  set_axis_bf(PID_AXIS_PITCH, 28U, 14U, 0U);
-  set_axis_bf(PID_AXIS_YAW, 35U, 8U, 0U);
+  set_axis_bf(PID_AXIS_ROLL, 30U, 16U, 0U);
+  set_axis_bf(PID_AXIS_PITCH, 34U, 18U, 0U);
+  set_axis_bf(PID_AXIS_YAW, 50U, 10U, 0U);
   ControllerAttitude_Reset();
 }
 
