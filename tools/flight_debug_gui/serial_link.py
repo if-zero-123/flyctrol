@@ -208,7 +208,7 @@ class FakeSerialBackend(SerialBackend):
         if cmd == "status":
             return (
                 "armed=0 failsafe=0 rc=1 imu=1 baro=1 mode angle=1 baro=1 air=0 crash=0\r\n"
-                "althold req=1 ready=1 active=0 baro_ok=1 imu_ok=1 tilt_ok=1 armed=0 alt=8cm vel=0cm/s out=0 thr_ok=0 thr_min=300\r\n"
+                "althold req=1 ready=1 active=0 baro_ok=1 imu_ok=1 tilt_ok=1 armed=0 alt=8cm vel=0cm/s out=0 thr_ok=0 thr_min=80\r\n"
                 "uptime=12345ms throttle=0 motor_test=0\r\n"
                 "failsafe_flags=0x0000 last_disarm=0x0000 motor_idle=120 motor_max=1000"
             ), logging

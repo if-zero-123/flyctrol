@@ -8,7 +8,7 @@ from flight_debug_gui import FlightDebugGui
 SAMPLE = """
 NAZE32 custom firmware boot
 armed=0 failsafe=0 rc=1 imu=1 baro=1 mode angle=1 baro=1 air=0 crash=0
-althold req=1 ready=1 active=0 baro_ok=1 imu_ok=1 tilt_ok=1 armed=0 alt=8cm vel=0cm/s out=0 thr_ok=0 thr_min=300
+althold req=1 ready=1 active=0 baro_ok=1 imu_ok=1 tilt_ok=1 armed=0 alt=8cm vel=0cm/s out=0 thr_ok=0 thr_min=80
 uptime=12345ms throttle=0 motor_test=0
 i2c: 0x68 0x76
 imu ok=1 acc_mg=12,-28,998 gyro_cdps=3,-2,1 temp=31.25C
@@ -46,7 +46,7 @@ class ParserTest(unittest.TestCase):
         self.assertTrue(state["althold"]["ready"])
         self.assertFalse(state["althold"]["active"])
         self.assertFalse(state["althold"]["throttle_ok"])
-        self.assertEqual(state["althold"]["throttle_min"], 300)
+        self.assertEqual(state["althold"]["throttle_min"], 80)
         self.assertEqual(state["battery"]["voltage_mv"], 8404)
         self.assertEqual(state["battery"]["cells"], 2)
         self.assertEqual(state["clock"]["pll"], "HSE")

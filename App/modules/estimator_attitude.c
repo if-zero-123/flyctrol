@@ -215,3 +215,15 @@ void EstimatorAttitude_GetTrim(float *roll_deg, float *pitch_deg)
     *pitch_deg = s_pitch_trim_deg;
   }
 }
+
+void EstimatorAttitude_GetGravityVector(float gravity_body[3])
+{
+  if (gravity_body == NULL)
+  {
+    return;
+  }
+
+  gravity_body[0] = 2.0f * ((s_q1 * s_q3) - (s_q0 * s_q2));
+  gravity_body[1] = 2.0f * ((s_q0 * s_q1) + (s_q2 * s_q3));
+  gravity_body[2] = (s_q0 * s_q0) - (s_q1 * s_q1) - (s_q2 * s_q2) + (s_q3 * s_q3);
+}

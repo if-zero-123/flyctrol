@@ -86,6 +86,7 @@ static void StabilizerTask(void *argument)
       Topic_PublishImu(&imu);
       EstimatorAttitude_Update(&imu, 0.002f, &attitude);
       Topic_PublishAttitude(&attitude);
+      EstimatorAltitude_PredictImu(&imu, &attitude, 0.002f);
       imu_updated = true;
     }
     else

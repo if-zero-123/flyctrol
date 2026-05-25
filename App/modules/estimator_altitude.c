@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "board_config.h"
+#include "estimator_attitude.h"
 
 static bool s_has_baseline;
 static bool s_has_velocity;
@@ -12,7 +13,9 @@ static uint8_t s_baseline_count;
 static uint8_t s_spike_count;
 static int32_t s_last_baseline_pressure_pa;
 static float s_filtered_cm;
+static float s_fused_altitude_cm;
 static float s_velocity_cms;
+static float s_accel_cms2;
 static int32_t s_last_altitude_cm;
 static uint32_t s_last_timestamp_ms;
 
@@ -79,7 +82,9 @@ static void restart_baseline(int32_t pressure_pa, uint32_t timestamp_ms)
   s_spike_count = 0U;
   s_last_baseline_pressure_pa = pressure_pa;
   s_filtered_cm = 0.0f;
+  s_fused_altitude_cm = 0.0f;
   s_velocity_cms = 0.0f;
+  s_accel_cms2 = 0.0f;
   s_last_altitude_cm = 0;
   s_last_timestamp_ms = timestamp_ms;
 }
@@ -94,9 +99,44 @@ void EstimatorAltitude_Init(void)
   s_spike_count = 0U;
   s_last_baseline_pressure_pa = 0;
   s_filtered_cm = 0.0f;
+  s_fused_altitude_cm = 0.0f;
   s_velocity_cms = 0.0f;
+  s_accel_cms2 = 0.0f;
   s_last_altitude_cm = 0;
   s_last_timestamp_ms = 0U;
+}
+
+void EstimatorAltitude_PredictImu(const imu_sample_t *imu,
+                                  const attitude_t *attitude,
+                                  float dt_s)
+{
+  if ((imu == NULL) || (attitude == NULL) || !s_has_baseline ||
+      !imu->healthy || !attitude->healthy || (dt_s <= 0.0f))
+  {
+    return;
+  }
+
+  dt_s = clampf_local(dt_s, 0.001f, 0.010f);
+  float gravity_body[3];
+  EstimatorAttitude_GetGravityVector(gravity_body);
+  float vertical_g = (imu->accel_g[0] * gravity_body[0]) +
+                     (imu->accel_g[1] * gravity_body[1]) +
+                     (imu->accel_g[2] * gravity_body[2]);
+  float accel_cms2 = (vertical_g - 1.0f) * 980.665f;
+
+  if (absf_local(accel_cms2) < BOARD_ALT_IMU_ACC_DEADBAND_CMS2)
+  {
+    accel_cms2 = 0.0f;
+  }
+  accel_cms2 = clampf_local(accel_cms2,
+                            -BOARD_ALT_IMU_ACC_LIMIT_CMS2,
+                            BOARD_ALT_IMU_ACC_LIMIT_CMS2);
+  s_accel_cms2 += pt1_alpha(BOARD_ALT_IMU_ACC_LPF_HZ, dt_s) * (accel_cms2 - s_accel_cms2);
+  s_velocity_cms += s_accel_cms2 * dt_s;
+  s_velocity_cms = clampf_local(s_velocity_cms,
+                                -(float)BOARD_BARO_VEL_LIMIT_CMS,
+                                (float)BOARD_BARO_VEL_LIMIT_CMS);
+  s_fused_altitude_cm += s_velocity_cms * dt_s;
 }
 
 void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
@@ -137,7 +177,9 @@ void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
 
     s_baseline_pa = s_baseline_accum_pa / (int32_t)s_baseline_count;
     s_filtered_cm = 0.0f;
+    s_fused_altitude_cm = 0.0f;
     s_velocity_cms = 0.0f;
+    s_accel_cms2 = 0.0f;
     s_last_altitude_cm = 0;
     s_last_timestamp_ms = baro->timestamp_ms;
     s_has_velocity = false;
@@ -166,7 +208,8 @@ void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
     }
     s_velocity_cms *= 0.80f;
     s_last_timestamp_ms = baro->timestamp_ms;
-    out->altitude_cm = (int32_t)s_filtered_cm;
+    s_fused_altitude_cm += BOARD_ALT_BARO_POS_BLEND * (s_filtered_cm - s_fused_altitude_cm);
+    out->altitude_cm = (int32_t)s_fused_altitude_cm;
     out->velocity_cms = float_to_i16(s_velocity_cms);
     return;
   }
@@ -189,11 +232,13 @@ void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
     {
       raw_vel = 0.0f;
     }
-    s_velocity_cms += pt1_alpha(BOARD_BARO_VEL_LPF_HZ, dt_s) * (raw_vel - s_velocity_cms);
+    float baro_velocity = s_velocity_cms + pt1_alpha(BOARD_BARO_VEL_LPF_HZ, dt_s) * (raw_vel - s_velocity_cms);
+    s_velocity_cms += BOARD_ALT_BARO_VEL_BLEND * (baro_velocity - s_velocity_cms);
   }
 
+  s_fused_altitude_cm += BOARD_ALT_BARO_POS_BLEND * ((float)alt_cm - s_fused_altitude_cm);
   s_last_altitude_cm = alt_cm;
   s_last_timestamp_ms = baro->timestamp_ms;
-  out->altitude_cm = alt_cm;
+  out->altitude_cm = (int32_t)s_fused_altitude_cm;
   out->velocity_cms = float_to_i16(s_velocity_cms);
 }
