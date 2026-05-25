@@ -20,7 +20,7 @@ USB-TTL GND -> 飞控 GND
 tools\flight_debug_gui\run_debug_gui.bat
 ```
 
-第一次启动如果缺少 `pyserial`，脚本会自动安装。窗口里默认有一个 `FAKE - 无硬件演示` 端口，可以先练习界面；接上 USB-TTL 后点击“刷新”，选择真实 `COMx` 后连接。
+第一次启动如果缺少 `pyserial`，脚本会自动安装。`FAKE` 是假串口演示模式，只能练习界面，不能验证真实飞控；接上板载 CH340 后点击“刷新”，选择真实 `COMx` 后连接。
 
 如果不知道哪个 COM 是飞控，点击 `自动探测`。上位机会逐个打开真实 COM 口，等待启动文本或 `>` 提示符，并尝试识别 `help/status` 输出。
 

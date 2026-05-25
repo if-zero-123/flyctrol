@@ -300,7 +300,13 @@ class FlightDebugGui(tk.Tk):
     def refresh_ports(self) -> None:
         self.port_items = available_ports()
         self.port_combo["values"] = [label for _, label in self.port_items]
-        if self.port_items and not self.selected_port.get():
+        labels = {label for _, label in self.port_items}
+        if self.selected_port.get() not in labels:
+            self.selected_port.set("")
+        real_ports = [(port, label) for port, label in self.port_items if port != "FAKE"]
+        if real_ports and not self.selected_port.get():
+            self.selected_port.set(real_ports[0][1])
+        elif self.port_items and not self.selected_port.get():
             self.selected_port.set(self.port_items[0][1])
 
     def _selected_port_id(self) -> str:
@@ -308,12 +314,18 @@ class FlightDebugGui(tk.Tk):
         for port, label in self.port_items:
             if selected == label:
                 return port
-        return "FAKE"
+        return ""
 
     def connect(self) -> None:
         if self.backend is not None:
             self.disconnect()
         port = self._selected_port_id()
+        if not port:
+            messagebox.showerror("连接失败", "请先选择真实 COM 口；演示模式请选择 FAKE。")
+            return
+        if port == "FAKE":
+            if not messagebox.askyesno("演示模式", "FAKE 只是假串口演示，不能验证真实飞控。仍要连接 FAKE 吗？"):
+                return
         try:
             self.backend = create_backend(port, self.events)
             self.backend.connect(port)

@@ -20,11 +20,12 @@ Event = Tuple[str, str]
 
 
 def available_ports() -> List[Tuple[str, str]]:
-    ports: List[Tuple[str, str]] = [("FAKE", "FAKE - 无硬件演示")]
+    ports: List[Tuple[str, str]] = []
     if list_ports is None:
-        return ports
-    for p in list_ports.comports():
+        return [("FAKE", "FAKE - 演示模式，不连接真实飞控")]
+    for p in sorted(list_ports.comports(), key=lambda item: item.device):
         ports.append((p.device, f"{p.device} - {p.description}"))
+    ports.append(("FAKE", "FAKE - 演示模式，不连接真实飞控"))
     return ports
 
 
@@ -197,10 +198,11 @@ class FakeSerialBackend(SerialBackend):
             return "", logging
         if cmd == "help":
             return (
-                "cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt\r\n"
-                "cmd: motor unlock|stop|<1-4> <permille>, motors <permille>\r\n"
+                "cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag\r\n"
+                "cmd: motormap control mixcheck [r_milli p_milli y_milli thr]\r\n"
+                "cmd: motoridle [0-200], motor unlock|stop|<1-4> <permille>, motors <permille>\r\n"
                 "cmd: pid [roll|pitch|yaw <kp_milli> <ki_milli> <kd_milli>]\r\n"
-                "cmd: arm disarm log on|off reboot",
+                "cmd: gyrocal acccal imucal arm disarm log on|off reboot",
                 logging,
             )
         if cmd == "status":
@@ -219,6 +221,33 @@ class FakeSerialBackend(SerialBackend):
             return "rc connected=1 failsafe=0 arm=0 baro=0 age=12ms\r\nstick r=0 p=0 y=0 t=0 raw=992,992,172,992,988,988,172,172,172,172,172,172,172,172,172,172", logging
         if cmd == "batt":
             return "batt raw=948 adc=764mV voltage=8404mV cells=2 percent=100 low=0 critical=0", logging
+        if cmd in ("battdiag", "adc"):
+            return (
+                "battdiag path=BAT-R29(100k)-ADC_BATT/PA4-R28(10k)-GND\r\n"
+                "battdiag ratio=11/1 cells=2 vref=3300mV adcmax=4095\r\n"
+                "battdiag expected_raw empty=744 low=789 full=946\r\n"
+                "battdiag now raw=948 adc=764mV voltage=8404mV"
+            ), logging
+        if cmd == "motormap":
+            return (
+                "motormap QuadX nose-forward:\r\n"
+                "motormap layout: M4 front-left, M2 front-right, M3 rear-left, M1 rear-right\r\n"
+                "motormap output: M1=PA8/CN6 M2=PA11/CN4 M3=PB6/CN3 M4=PB7/CN1\r\n"
+                "motormap spin: standard M1/M4=CW, M2/M3=CCW viewed from top\r\n"
+                "motormap correction: right-low -> M1/M2 up, nose-low -> M2/M4 up"
+            ), logging
+        if cmd in ("control", "ctrl"):
+            return (
+                "control sp_cd r=0 p=0 yawrate_cdps=0 thr=0 baro=0\r\n"
+                "control att_cd r=24 p=-16 y=110 healthy=1\r\n"
+                "control out_milli r=0 p=0 y=0 alt=0\r\n"
+                "control mot_permille M1=0 M2=0 M3=0 M4=0"
+            ), logging
+        if cmd.startswith("mixcheck"):
+            return FakeSerialBackend._mixcheck_response(cmd), logging
+        if cmd.startswith("motoridle"):
+            parts = cmd.split()
+            return f"motoridle={parts[1] if len(parts) > 1 else 120} permille", logging
         if cmd == "heap":
             return "heap free=7816 min=7040 rxdrop=0", logging
         if cmd == "tasks":
@@ -245,6 +274,43 @@ class FakeSerialBackend(SerialBackend):
         if cmd == "disarm":
             return "disarmed", logging
         return "unknown command", logging
+
+    @staticmethod
+    def _mixcheck_response(cmd: str) -> str:
+        parts = cmd.split()
+
+        def arg(index: int, default: int) -> int:
+            try:
+                return int(parts[index])
+            except (IndexError, ValueError):
+                return default
+
+        r = arg(1, 0) / 1000.0
+        p = arg(2, 0) / 1000.0
+        y = arg(3, 0) / 1000.0
+        throttle = max(0, min(1000, arg(4, 200)))
+        t = throttle / 1000.0
+        idle = 0.12
+        motors = [
+            t - r + p - y,
+            t - r - p + y,
+            t + r + p + y,
+            t + r - p - y,
+        ]
+        min_v = min(motors)
+        max_v = max(motors)
+        if min_v < idle:
+            motors = [m + (idle - min_v) for m in motors]
+        max_v = max(motors)
+        if max_v > 1.0:
+            motors = [m - (max_v - 1.0) for m in motors]
+        motors = [max(idle, min(1.0, m)) for m in motors]
+        values = [int(m * 1000.0) for m in motors]
+        return (
+            f"mixcheck in_milli r={int(r * 1000)} p={int(p * 1000)} y={int(y * 1000)} thr={throttle}\r\n"
+            f"mixcheck M1={values[0]} M2={values[1]} M3={values[2]} M4={values[3]}\r\n"
+            "mixcheck +roll=>M3/M4 up, +pitch=>M1/M3 up, +yaw=>M2/M3 up"
+        )
 
 
 def create_backend(port: str, events: "queue.Queue[Event]") -> SerialBackend:
