@@ -79,6 +79,7 @@ typedef struct {
   bool baro_mode;
   bool motor_test_unlocked;
   uint16_t failsafe_flags;
+  uint16_t arm_block_flags;
   uint16_t last_disarm_flags;
   uint16_t motor_idle_permille;
   uint16_t motor_max_permille;

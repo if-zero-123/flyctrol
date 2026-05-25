@@ -62,18 +62,33 @@ void Safety_Update(void)
   }
   bool throttle_low = rc.throttle <= BOARD_ARM_THROTTLE_MAX;
   uint16_t failsafe_flags = 0U;
+  uint16_t arm_block_flags = 0U;
 
   if (!rc_recent)
   {
     failsafe_flags |= SAFETY_FAILSAFE_RC;
+    arm_block_flags |= SAFETY_ARM_BLOCK_RC;
   }
-  if (!attitude_recent || (!was_armed && !arming_angle_ok))
+  if (!attitude_recent)
   {
     failsafe_flags |= SAFETY_FAILSAFE_IMU;
+    arm_block_flags |= SAFETY_ARM_BLOCK_IMU;
   }
-  if (!was_armed && !battery_ok)
+  if (attitude_recent && !arming_angle_ok)
   {
-    failsafe_flags |= SAFETY_FAILSAFE_BATTERY;
+    arm_block_flags |= SAFETY_ARM_BLOCK_LEVEL;
+  }
+  if (!battery_ok)
+  {
+    arm_block_flags |= SAFETY_ARM_BLOCK_BATTERY;
+  }
+  if (!throttle_low)
+  {
+    arm_block_flags |= SAFETY_ARM_BLOCK_THROTTLE;
+  }
+  if (!s_arm_seen_low)
+  {
+    arm_block_flags |= SAFETY_ARM_BLOCK_LATCH;
   }
 
   s_status.rc_ok = rc_recent;
@@ -86,6 +101,7 @@ void Safety_Update(void)
   s_status.motor_max_permille = MixerQuad_GetMotorMaxPermille();
   s_status.uptime_ms = now;
   s_status.failsafe_flags = failsafe_flags;
+  s_status.arm_block_flags = arm_block_flags;
   s_status.failsafe = failsafe_flags != 0U;
   if (now > s_motor_test_until_ms)
   {
@@ -106,7 +122,7 @@ void Safety_Update(void)
       }
     }
   }
-  else if (!s_status.armed && arm_request && s_arm_seen_low && throttle_low && !s_status.failsafe)
+  else if (!s_status.armed && arm_request && (arm_block_flags == 0U))
   {
     s_status.armed = true;
     s_status.last_disarm_flags = 0U;
