@@ -14,6 +14,7 @@
 #include "debug_uart.h"
 #include "estimator_altitude.h"
 #include "estimator_attitude.h"
+#include "flight_monitor.h"
 #include "flight_types.h"
 #include "led.h"
 #include "main.h"
@@ -143,6 +144,7 @@ static void StabilizerTask(void *argument)
     status.setpoint = sp;
     status.control = control;
     Topic_PublishStatus(&status);
+    FlightMonitor_Update(&status);
 
     vTaskDelayUntil(&last, period);
   }

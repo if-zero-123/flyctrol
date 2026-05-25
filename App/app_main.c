@@ -9,6 +9,7 @@
 #include "debug_uart.h"
 #include "estimator_altitude.h"
 #include "estimator_attitude.h"
+#include "flight_monitor.h"
 #include "i2c_bus.h"
 #include "led.h"
 #include "main.h"
@@ -24,6 +25,7 @@ void App_Start(void)
 {
   AppBootStage_Set(40U);
   Topic_Init();
+  FlightMonitor_Init();
   DebugUart_Init();
   Telemetry_PrintBoot();
   DebugUart_WriteLine("init: app start");

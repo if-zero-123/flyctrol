@@ -13,6 +13,7 @@
 #include "controller_attitude.h"
 #include "debug_uart.h"
 #include "estimator_attitude.h"
+#include "flight_monitor.h"
 #include "i2c_bus.h"
 #include "main.h"
 #include "mixer_quad.h"
@@ -53,6 +54,7 @@ static void print_help(void)
 {
   DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
   DebugUart_WriteLine("cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]");
+  DebugUart_WriteLine("cmd: flight shows last armed-flight summary");
   DebugUart_WriteLine("cmd: motoridle [0-200], motormax [700-1000], motor unlock|stop|<1-4> <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <P> <I> <D>|safe|bf] uses BF-style units");
   DebugUart_WriteLine("cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm log on|off reboot");
@@ -716,6 +718,10 @@ static void execute_line(char *line)
   else if ((strcmp(cmd, "control") == 0) || (strcmp(cmd, "ctrl") == 0))
   {
     print_control();
+  }
+  else if (strcmp(cmd, "flight") == 0)
+  {
+    FlightMonitor_Print();
   }
   else if (strcmp(cmd, "yawdir") == 0)
   {
