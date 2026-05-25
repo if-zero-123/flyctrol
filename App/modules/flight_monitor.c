@@ -21,6 +21,11 @@ typedef struct {
   uint16_t max_throttle;
   uint16_t max_motor;
   uint16_t max_motor_spread;
+  bool althold_seen;
+  int32_t min_baro_alt_cm;
+  int32_t max_baro_alt_cm;
+  int16_t max_abs_baro_vel_cms;
+  int16_t max_abs_alt_out_permille;
   int16_t max_abs_roll_cd;
   int16_t max_abs_pitch_cd;
   int16_t max_out_r_milli;
@@ -58,6 +63,8 @@ static void begin_flight(uint32_t now)
   s_summary.start_ms = now;
   s_summary.end_ms = now;
   s_summary.min_batt_mv = 65535U;
+  s_summary.min_baro_alt_cm = 2147483647L;
+  s_summary.max_baro_alt_cm = -2147483647L;
 }
 
 void FlightMonitor_Init(void)
@@ -77,6 +84,7 @@ void FlightMonitor_Update(const flight_status_t *status)
 
   battery_status_t batt = Topic_GetBattery();
   attitude_t att = Topic_GetAttitude();
+  baro_sample_t baro = Topic_GetBaro();
   uint32_t now = status->uptime_ms;
 
   taskENTER_CRITICAL();
@@ -101,6 +109,8 @@ void FlightMonitor_Update(const flight_status_t *status)
     int16_t out_r = abs_i16(clamp_i16((int32_t)(status->control.roll * 1000.0f)));
     int16_t out_p = abs_i16(clamp_i16((int32_t)(status->control.pitch * 1000.0f)));
     int16_t out_y = abs_i16(clamp_i16((int32_t)(status->control.yaw * 1000.0f)));
+    int16_t alt_out = abs_i16(status->control.altitude_permille);
+    int16_t baro_vel = abs_i16(baro.velocity_cms);
 
     s_summary.end_ms = now;
     s_summary.stop_flags = status->failsafe_flags;
@@ -122,6 +132,17 @@ void FlightMonitor_Update(const flight_status_t *status)
     {
       s_summary.max_motor_spread = spread;
     }
+    if (status->baro_mode || status->setpoint.baro_hold || (status->control.altitude_permille != 0))
+    {
+      s_summary.althold_seen = true;
+    }
+    if (baro.healthy)
+    {
+      if (baro.altitude_cm < s_summary.min_baro_alt_cm) { s_summary.min_baro_alt_cm = baro.altitude_cm; }
+      if (baro.altitude_cm > s_summary.max_baro_alt_cm) { s_summary.max_baro_alt_cm = baro.altitude_cm; }
+      if (baro_vel > s_summary.max_abs_baro_vel_cms) { s_summary.max_abs_baro_vel_cms = baro_vel; }
+    }
+    if (alt_out > s_summary.max_abs_alt_out_permille) { s_summary.max_abs_alt_out_permille = alt_out; }
     if (roll_cd > s_summary.max_abs_roll_cd) { s_summary.max_abs_roll_cd = roll_cd; }
     if (pitch_cd > s_summary.max_abs_pitch_cd) { s_summary.max_abs_pitch_cd = pitch_cd; }
     if (out_r > s_summary.max_out_r_milli) { s_summary.max_out_r_milli = out_r; }
@@ -171,4 +192,10 @@ void FlightMonitor_Print(void)
                    s.max_out_r_milli,
                    s.max_out_p_milli,
                    s.max_out_y_milli);
+  DebugUart_Printf("flight althold=%u alt_min=%ldcm alt_max=%ldcm max_vel=%dcm/s max_alt_out=%d\r\n",
+                   s.althold_seen ? 1U : 0U,
+                   (long)((s.min_baro_alt_cm == 2147483647L) ? 0 : s.min_baro_alt_cm),
+                   (long)((s.max_baro_alt_cm == -2147483647L) ? 0 : s.max_baro_alt_cm),
+                   s.max_abs_baro_vel_cms,
+                   s.max_abs_alt_out_permille);
 }

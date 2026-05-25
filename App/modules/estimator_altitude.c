@@ -7,10 +7,19 @@
 static bool s_has_baseline;
 static bool s_has_velocity;
 static int32_t s_baseline_pa;
+static int32_t s_baseline_accum_pa;
+static uint8_t s_baseline_count;
+static uint8_t s_spike_count;
+static int32_t s_last_baseline_pressure_pa;
 static float s_filtered_cm;
 static float s_velocity_cms;
 static int32_t s_last_altitude_cm;
 static uint32_t s_last_timestamp_ms;
+
+static int32_t abs_i32(int32_t v)
+{
+  return (v < 0) ? -v : v;
+}
 
 static float absf_local(float v)
 {
@@ -54,11 +63,36 @@ static int16_t float_to_i16(float v)
   return (int16_t)v;
 }
 
+static bool pressure_plausible(int32_t pressure_pa)
+{
+  return (pressure_pa >= BOARD_BARO_PRESSURE_MIN_PA) &&
+         (pressure_pa <= BOARD_BARO_PRESSURE_MAX_PA);
+}
+
+static void restart_baseline(int32_t pressure_pa, uint32_t timestamp_ms)
+{
+  s_has_baseline = false;
+  s_has_velocity = false;
+  s_baseline_pa = pressure_pa;
+  s_baseline_accum_pa = pressure_pa;
+  s_baseline_count = 1U;
+  s_spike_count = 0U;
+  s_last_baseline_pressure_pa = pressure_pa;
+  s_filtered_cm = 0.0f;
+  s_velocity_cms = 0.0f;
+  s_last_altitude_cm = 0;
+  s_last_timestamp_ms = timestamp_ms;
+}
+
 void EstimatorAltitude_Init(void)
 {
   s_has_baseline = false;
   s_has_velocity = false;
   s_baseline_pa = 101325;
+  s_baseline_accum_pa = 0;
+  s_baseline_count = 0U;
+  s_spike_count = 0U;
+  s_last_baseline_pressure_pa = 0;
   s_filtered_cm = 0.0f;
   s_velocity_cms = 0.0f;
   s_last_altitude_cm = 0;
@@ -73,7 +107,7 @@ void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
   }
 
   *out = *baro;
-  if (!baro->healthy || (baro->pressure_pa <= 0))
+  if (!baro->healthy || !pressure_plausible(baro->pressure_pa))
   {
     out->healthy = false;
     return;
@@ -81,13 +115,34 @@ void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
 
   if (!s_has_baseline)
   {
-    s_baseline_pa = baro->pressure_pa;
+    if ((s_baseline_count == 0U) ||
+        (abs_i32(baro->pressure_pa - s_last_baseline_pressure_pa) > BOARD_BARO_BASELINE_STEP_MAX_PA))
+    {
+      restart_baseline(baro->pressure_pa, baro->timestamp_ms);
+    }
+    else
+    {
+      s_baseline_accum_pa += baro->pressure_pa;
+      s_baseline_count++;
+      s_last_baseline_pressure_pa = baro->pressure_pa;
+    }
+
+    out->altitude_cm = 0;
+    out->velocity_cms = 0;
+    out->healthy = false;
+    if (s_baseline_count < BOARD_BARO_BASELINE_SAMPLES)
+    {
+      return;
+    }
+
+    s_baseline_pa = s_baseline_accum_pa / (int32_t)s_baseline_count;
     s_filtered_cm = 0.0f;
     s_velocity_cms = 0.0f;
     s_last_altitude_cm = 0;
     s_last_timestamp_ms = baro->timestamp_ms;
     s_has_velocity = false;
     s_has_baseline = true;
+    out->healthy = true;
   }
 
   int32_t raw_cm = ((s_baseline_pa - baro->pressure_pa) * 25) / 3;
@@ -97,6 +152,25 @@ void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
     dt_s = (float)(baro->timestamp_ms - s_last_timestamp_ms) / 1000.0f;
     dt_s = clampf_local(dt_s, 0.010f, 0.150f);
   }
+
+  if (s_has_velocity && (absf_local((float)raw_cm - s_filtered_cm) > (float)BOARD_BARO_ALT_SPIKE_REJECT_CM))
+  {
+    s_spike_count++;
+    if (s_spike_count >= 8U)
+    {
+      restart_baseline(baro->pressure_pa, baro->timestamp_ms);
+      out->altitude_cm = 0;
+      out->velocity_cms = 0;
+      out->healthy = false;
+      return;
+    }
+    s_velocity_cms *= 0.80f;
+    s_last_timestamp_ms = baro->timestamp_ms;
+    out->altitude_cm = (int32_t)s_filtered_cm;
+    out->velocity_cms = float_to_i16(s_velocity_cms);
+    return;
+  }
+  s_spike_count = 0U;
 
   s_filtered_cm += pt1_alpha(BOARD_BARO_ALT_LPF_HZ, dt_s) * ((float)raw_cm - s_filtered_cm);
   int32_t alt_cm = (int32_t)s_filtered_cm;

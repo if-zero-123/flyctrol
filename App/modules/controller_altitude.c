@@ -7,6 +7,7 @@
 static bool s_active;
 static bool s_velocity_control;
 static int32_t s_hold_altitude_cm;
+static int16_t s_stick_reference_permille;
 static int16_t s_throttle_base_permille;
 static float s_integrator_permille;
 static int16_t s_last_output_permille;
@@ -67,6 +68,7 @@ void ControllerAltitude_Reset(void)
   s_active = false;
   s_velocity_control = false;
   s_hold_altitude_cm = 0;
+  s_stick_reference_permille = 0;
   s_throttle_base_permille = 0;
   s_integrator_permille = 0.0f;
   s_last_output_permille = 0;
@@ -91,7 +93,10 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
     s_active = true;
     s_velocity_control = false;
     s_hold_altitude_cm = baro->altitude_cm;
-    s_throttle_base_permille = (int16_t)setpoint->throttle_permille;
+    s_stick_reference_permille = (int16_t)setpoint->throttle_permille;
+    s_throttle_base_permille = clamp_i16(setpoint->throttle_permille,
+                                         BOARD_ALT_BASE_MIN_PERMILLE,
+                                         BOARD_ALT_BASE_MAX_PERMILLE);
     s_integrator_permille = 0.0f;
     s_last_output_permille = 0;
     s_last_baro_timestamp_ms = baro->timestamp_ms;
@@ -110,7 +115,7 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
   }
   s_last_baro_timestamp_ms = baro->timestamp_ms;
 
-  int32_t throttle_delta = (int32_t)setpoint->throttle_permille - (int32_t)s_throttle_base_permille;
+  int32_t throttle_delta = (int32_t)setpoint->throttle_permille - (int32_t)s_stick_reference_permille;
   int32_t abs_delta = abs_i32(throttle_delta);
   int32_t target_velocity_cms = 0;
   int32_t altitude_error_cm = 0;
@@ -168,9 +173,19 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
 
   int32_t desired_total = (int32_t)s_throttle_base_permille + (int32_t)correction;
   desired_total = clamp_i16(desired_total, 0, 1000);
-  s_last_output_permille = clamp_i16(desired_total - (int32_t)setpoint->throttle_permille,
+  int16_t desired_output = clamp_i16(desired_total - (int32_t)setpoint->throttle_permille,
                                      -BOARD_ALT_OUTPUT_LIMIT_PERMILLE,
                                      BOARD_ALT_OUTPUT_LIMIT_PERMILLE);
+  int32_t output_delta = (int32_t)desired_output - (int32_t)s_last_output_permille;
+  if (output_delta > BOARD_ALT_OUTPUT_SLEW_PER_SAMPLE)
+  {
+    output_delta = BOARD_ALT_OUTPUT_SLEW_PER_SAMPLE;
+  }
+  else if (output_delta < -BOARD_ALT_OUTPUT_SLEW_PER_SAMPLE)
+  {
+    output_delta = -BOARD_ALT_OUTPUT_SLEW_PER_SAMPLE;
+  }
+  s_last_output_permille = (int16_t)((int32_t)s_last_output_permille + output_delta);
 
   s_debug.active = true;
   s_debug.velocity_control = s_velocity_control;
@@ -190,4 +205,9 @@ void ControllerAltitude_GetDebug(controller_altitude_debug_t *out)
   {
     *out = s_debug;
   }
+}
+
+bool ControllerAltitude_IsActive(void)
+{
+  return s_active;
 }

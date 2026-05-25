@@ -5,6 +5,7 @@
 
 void ControllerAltitude_Init(void);
 void ControllerAltitude_Reset(void);
+bool ControllerAltitude_IsActive(void);
 int16_t ControllerAltitude_Update(const baro_sample_t *baro,
                                   const control_setpoint_t *setpoint,
                                   bool active,

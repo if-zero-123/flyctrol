@@ -186,7 +186,8 @@ class FlightCliParser:
     def _parse_althold(self, text: str) -> None:
         m = re.search(
             rf"althold req=(\d+) ready=(\d+) active=(\d+) baro_ok=(\d+) imu_ok=(\d+) "
-            rf"tilt_ok=(\d+) armed=(\d+) alt={_INT}cm vel={_INT}cm/s out={_INT}",
+            rf"tilt_ok=(\d+) armed=(\d+) alt={_INT}cm vel={_INT}cm/s out={_INT}"
+            rf"(?: thr_ok=(\d+) thr_min=(\d+))?",
             text,
         )
         if not m:
@@ -203,6 +204,9 @@ class FlightCliParser:
             "velocity_cms": int(m.group(9)),
             "output": int(m.group(10)),
         }
+        if m.group(11) is not None:
+            self.state["althold"]["throttle_ok"] = bool(int(m.group(11)))
+            self.state["althold"]["throttle_min"] = int(m.group(12))
 
     def _parse_uptime(self, text: str) -> None:
         m = re.search(r"uptime=(\d+)ms throttle=(\d+) motor_test=(\d+)", text)

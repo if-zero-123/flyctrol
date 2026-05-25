@@ -123,6 +123,8 @@ static void print_status(void)
                  (absf_local(att.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
                  (absf_local(att.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
   bool alt_ready = rc.baro_mode && st.baro_ok && st.imu_ok && tilt_ok;
+  bool alt_throttle_ok = ControllerAltitude_IsActive() ||
+                         (rc.throttle >= BOARD_ALT_ENABLE_THROTTLE_MIN);
 
   DebugUart_Printf("armed=%u failsafe=%u rc=%u imu=%u baro=%u mode angle=%u baro=%u air=%u crash=%u\r\n",
                    st.armed ? 1U : 0U,
@@ -134,7 +136,7 @@ static void print_status(void)
                    st.baro_mode ? 1U : 0U,
                    st.air_mode ? 1U : 0U,
                    st.crash_detected ? 1U : 0U);
-  DebugUart_Printf("althold req=%u ready=%u active=%u baro_ok=%u imu_ok=%u tilt_ok=%u armed=%u alt=%ldcm vel=%dcm/s out=%d\r\n",
+  DebugUart_Printf("althold req=%u ready=%u active=%u baro_ok=%u imu_ok=%u tilt_ok=%u armed=%u alt=%ldcm vel=%dcm/s out=%d thr_ok=%u thr_min=%u\r\n",
                    rc.baro_mode ? 1U : 0U,
                    alt_ready ? 1U : 0U,
                    alt.active ? 1U : 0U,
@@ -144,7 +146,9 @@ static void print_status(void)
                    st.armed ? 1U : 0U,
                    (long)baro.altitude_cm,
                    baro.velocity_cms,
-                   alt.output_permille);
+                   alt.output_permille,
+                   alt_throttle_ok ? 1U : 0U,
+                   BOARD_ALT_ENABLE_THROTTLE_MIN);
   DebugUart_Printf("uptime=%lums throttle=%u motor_test=%u\r\n",
                    (unsigned long)st.uptime_ms,
                    st.throttle_permille,

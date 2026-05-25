@@ -64,13 +64,15 @@ void Telemetry_PrintOnce(void)
                    (long)baro.altitude_cm,
                    baro.velocity_cms,
                    (long)baro.pressure_pa);
-  DebugUart_Printf("ctl sp=%ld,%ld,%ld out=%ld,%ld,%ld\r\n",
+  DebugUart_Printf("ctl sp=%ld,%ld,%ld thr=%u out=%ld,%ld,%ld alt=%d\r\n",
                    (long)deg_to_cdeg(st.setpoint.roll_deg),
                    (long)deg_to_cdeg(st.setpoint.pitch_deg),
                    (long)deg_to_cdeg(st.setpoint.yaw_rate_dps),
+                   st.setpoint.throttle_permille,
                    (long)(st.control.roll * 1000.0f),
                    (long)(st.control.pitch * 1000.0f),
-                   (long)(st.control.yaw * 1000.0f));
+                   (long)(st.control.yaw * 1000.0f),
+                   st.control.altitude_permille);
   DebugUart_Printf("mot %ld %ld %ld %ld\r\n",
                    (long)duty_to_permille(motor[0]),
                    (long)duty_to_permille(motor[1]),

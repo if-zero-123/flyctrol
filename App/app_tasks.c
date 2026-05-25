@@ -149,9 +149,12 @@ static void StabilizerTask(void *argument)
     }
     bool baro_recent = baro.healthy &&
                        ((BoardTime_Millis() - baro.timestamp_ms) <= BOARD_BARO_TIMEOUT_MS);
-    bool altitude_active = control_enabled && status.baro_mode && attitude.healthy && baro_recent &&
-                           (absf_local(attitude.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
-                           (absf_local(attitude.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
+    bool altitude_ready = control_enabled && status.baro_mode && attitude.healthy && baro_recent &&
+                          (absf_local(attitude.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
+                          (absf_local(attitude.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
+    bool altitude_active = altitude_ready &&
+                           (ControllerAltitude_IsActive() ||
+                            (sp.throttle_permille >= BOARD_ALT_ENABLE_THROTTLE_MIN));
     control.altitude_permille = ControllerAltitude_Update(&baro, &sp, altitude_active, 0.002f);
 
     if (Safety_CanRunMotors())
