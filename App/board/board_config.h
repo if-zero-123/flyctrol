@@ -19,13 +19,14 @@
 #define BOARD_BATT_EMPTY_MV           6600U
 
 #define BOARD_CONTROL_LOOP_HZ         500U
-#define BOARD_MAX_ANGLE_DEG           12.0f
-#define BOARD_MAX_YAW_RATE_DPS        70.0f
-#define BOARD_LEVEL_GAIN_DPS_PER_DEG  1.8f
-#define BOARD_MAX_LEVEL_RATE_DPS      120.0f
-#define BOARD_RC_EXPO_PERCENT         45U
+#define BOARD_MAX_ANGLE_DEG           18.0f
+#define BOARD_MAX_YAW_RATE_DPS        90.0f
+#define BOARD_LEVEL_GAIN_DPS_PER_DEG  2.2f
+#define BOARD_MAX_LEVEL_RATE_DPS      150.0f
+#define BOARD_RC_EXPO_PERCENT         30U
 #define BOARD_YAW_GYRO_DIRECTION      (-1)
 #define BOARD_RC_DEADBAND             20
+#define BOARD_ARM_SWITCH_DEBOUNCE_MS  80U
 #define BOARD_IMU_GYRO_LPF_ALPHA      0.45f
 #define BOARD_IMU_ACCEL_LPF_ALPHA     0.30f
 #define BOARD_ARM_THROTTLE_MAX        50U

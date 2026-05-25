@@ -119,8 +119,9 @@ static void print_status(void)
                    st.last_disarm_flags,
                    st.motor_idle_permille,
                    st.motor_max_permille);
-  DebugUart_Printf("arm_block=0x%04X rule: arm=CH5 high, throttle<=%u, rc=1, imu=1, level<75deg, batt>%umV\r\n",
+  DebugUart_Printf("arm_block=0x%04X rule: arm=CH5 high stable>%ums, throttle<=%u, rc=1, imu=1, level<75deg, batt>%umV\r\n",
                    st.arm_block_flags,
+                   BOARD_ARM_SWITCH_DEBOUNCE_MS,
                    BOARD_ARM_THROTTLE_MAX,
                    BOARD_BATT_CRITICAL_MV);
 }

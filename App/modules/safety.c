@@ -2,6 +2,7 @@
 
 #include "board_config.h"
 #include "board_time.h"
+#include "flight_monitor.h"
 #include "mixer_quad.h"
 #include "motor_pwm.h"
 #include "topic.h"
@@ -9,6 +10,9 @@
 static flight_status_t s_status;
 static bool s_cli_arm_request;
 static bool s_arm_seen_low;
+static bool s_arm_raw_prev;
+static bool s_arm_request_stable;
+static uint32_t s_arm_change_ms;
 static uint32_t s_motor_test_until_ms;
 static uint32_t s_battery_critical_since_ms;
 static bool s_motor_test_bench;
@@ -22,6 +26,9 @@ void Safety_Init(void)
 {
   s_cli_arm_request = false;
   s_arm_seen_low = false;
+  s_arm_raw_prev = false;
+  s_arm_request_stable = false;
+  s_arm_change_ms = 0U;
   s_motor_test_until_ms = 0U;
   s_battery_critical_since_ms = 0U;
   s_motor_test_bench = false;
@@ -55,7 +62,17 @@ void Safety_Update(void)
   }
   bool battery_ok = (s_battery_critical_since_ms == 0U) ||
                     ((now - s_battery_critical_since_ms) < BOARD_BATT_CRITICAL_HOLD_MS);
-  bool arm_request = rc.arm_switch || s_cli_arm_request;
+  bool arm_raw = rc.arm_switch || s_cli_arm_request;
+  if (arm_raw != s_arm_raw_prev)
+  {
+    s_arm_raw_prev = arm_raw;
+    s_arm_change_ms = now;
+  }
+  if ((now - s_arm_change_ms) >= BOARD_ARM_SWITCH_DEBOUNCE_MS)
+  {
+    s_arm_request_stable = arm_raw;
+  }
+  bool arm_request = s_arm_request_stable;
   if (!arm_request)
   {
     s_arm_seen_low = true;
@@ -142,6 +159,7 @@ void Safety_Update(void)
     s_status.motor[i] = latest.motor[i];
   }
 
+  FlightMonitor_Update(&s_status);
   Topic_PublishStatus(&s_status);
 }
 
