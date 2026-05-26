@@ -14,8 +14,10 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
 typedef enum {
   CONTROLLER_ALTITUDE_STATE_INACTIVE = 0,
   CONTROLLER_ALTITUDE_STATE_GROUND_IDLE,
-  CONTROLLER_ALTITUDE_STATE_TAKEOFF,
-  CONTROLLER_ALTITUDE_STATE_FLYING
+  CONTROLLER_ALTITUDE_STATE_TOY_TAKEOFF,
+  CONTROLLER_ALTITUDE_STATE_TOY_ASSIST,
+  CONTROLLER_ALTITUDE_STATE_TAKEOFF = CONTROLLER_ALTITUDE_STATE_TOY_TAKEOFF,
+  CONTROLLER_ALTITUDE_STATE_FLYING = CONTROLLER_ALTITUDE_STATE_TOY_ASSIST
 } controller_altitude_state_t;
 
 typedef struct {
@@ -30,6 +32,9 @@ typedef struct {
   int16_t throttle_base_permille;
   int16_t correction_permille;
   int16_t output_permille;
+  bool assist_reliable;
+  bool baro_rejected;
+  int16_t assist_correction_limit_permille;
 } controller_altitude_debug_t;
 
 void ControllerAltitude_GetDebug(controller_altitude_debug_t *out);

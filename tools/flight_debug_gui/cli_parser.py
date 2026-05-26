@@ -187,6 +187,8 @@ class FlightCliParser:
         m = re.search(
             rf"althold req=(\d+) ready=(\d+) active=(\d+) baro_ok=(\d+) imu_ok=(\d+) "
             rf"tilt_ok=(\d+) armed=(\d+) alt={_INT}cm vel={_INT}cm/s out={_INT}"
+            rf"(?: corr={_INT} takeoff_thr=(\d+) state=(\d+) stick_ref={_INT} imu_pred=(\d+))?"
+            rf"(?: reliable=(\d+) reject=(\d+) limit={_INT})?"
             rf"(?: thr_ok=(\d+) thr_min=(\d+))?",
             text,
         )
@@ -205,8 +207,18 @@ class FlightCliParser:
             "output": int(m.group(10)),
         }
         if m.group(11) is not None:
-            self.state["althold"]["throttle_ok"] = bool(int(m.group(11)))
-            self.state["althold"]["throttle_min"] = int(m.group(12))
+            self.state["althold"]["correction"] = int(m.group(11))
+            self.state["althold"]["takeoff_threshold"] = int(m.group(12))
+            self.state["althold"]["state"] = int(m.group(13))
+            self.state["althold"]["stick_reference"] = int(m.group(14))
+            self.state["althold"]["imu_predict"] = bool(int(m.group(15)))
+        if m.group(16) is not None:
+            self.state["althold"]["assist_reliable"] = bool(int(m.group(16)))
+            self.state["althold"]["baro_rejected"] = bool(int(m.group(17)))
+            self.state["althold"]["correction_limit"] = int(m.group(18))
+        if m.group(19) is not None:
+            self.state["althold"]["throttle_ok"] = bool(int(m.group(19)))
+            self.state["althold"]["throttle_min"] = int(m.group(20))
 
     def _parse_uptime(self, text: str) -> None:
         m = re.search(r"uptime=(\d+)ms throttle=(\d+) motor_test=(\d+)", text)
@@ -275,7 +287,8 @@ class FlightCliParser:
         m = re.search(
             rf"baro hold active=(\d+) velctl=(\d+) hold={_INT}cm err={_INT}cm "
             rf"target_vel={_INT}cm/s base={_INT} corr={_INT} out={_INT}"
-            rf"(?: state=(\d+) stick_ref={_INT} imu_pred=(\d+))?",
+            rf"(?: state=(\d+) stick_ref={_INT} imu_pred=(\d+))?"
+            rf"(?: reliable=(\d+) reject=(\d+) limit={_INT})?",
             text,
         )
         if not m:
@@ -297,6 +310,10 @@ class FlightCliParser:
             alt["state"] = int(m.group(9))
             alt["stick_reference"] = int(m.group(10))
             alt["imu_predict"] = bool(int(m.group(11)))
+        if m.group(12) is not None:
+            alt["assist_reliable"] = bool(int(m.group(12)))
+            alt["baro_rejected"] = bool(int(m.group(13)))
+            alt["correction_limit"] = int(m.group(14))
         self.state["althold"] = alt
 
     def _parse_rc_status(self, text: str) -> None:
@@ -432,7 +449,8 @@ class FlightCliParser:
         m = re.search(
             rf"control alt active=(\d+) velctl=(\d+) hold={_INT}cm err={_INT}cm "
             rf"vel={_INT} target={_INT} base={_INT} corr={_INT}"
-            rf"(?: out={_INT} state=(\d+) stick_ref={_INT} imu_pred=(\d+))?",
+            rf"(?: out={_INT} state=(\d+) stick_ref={_INT} imu_pred=(\d+))?"
+            rf"(?: reliable=(\d+) reject=(\d+) limit={_INT})?",
             text,
         )
         if not m:
@@ -455,6 +473,10 @@ class FlightCliParser:
             alt["state"] = int(m.group(10))
             alt["stick_reference"] = int(m.group(11))
             alt["imu_predict"] = bool(int(m.group(12)))
+        if m.group(13) is not None:
+            alt["assist_reliable"] = bool(int(m.group(13)))
+            alt["baro_rejected"] = bool(int(m.group(14)))
+            alt["correction_limit"] = int(m.group(15))
         self.state["althold"] = alt
 
     def _parse_motors(self, text: str) -> None:

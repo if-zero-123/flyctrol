@@ -1031,7 +1031,10 @@ class FlightDebugGui(tk.Tk):
             f"base={althold.get('base', '-')} "
             f"corr={althold.get('correction', '-')} "
             f"out={althold.get('output', '-')} "
-            f"state={althold.get('state', '-')}"
+            f"state={althold.get('state', '-')} "
+            f"rel={int(bool(althold.get('assist_reliable', True)))} "
+            f"rej={int(bool(althold.get('baro_rejected', False)))} "
+            f"lim={althold.get('correction_limit', '-')}"
         )
 
     @staticmethod

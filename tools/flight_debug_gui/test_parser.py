@@ -8,13 +8,13 @@ from flight_debug_gui import FlightDebugGui
 SAMPLE = """
 NAZE32 custom firmware boot
 armed=0 failsafe=0 rc=1 imu=1 baro=1 mode angle=1 baro=1 air=0 crash=0
-althold req=1 ready=1 active=0 baro_ok=1 imu_ok=1 tilt_ok=1 armed=0 alt=8cm vel=0cm/s out=0 thr_ok=0 thr_min=80
+althold req=1 ready=1 active=0 baro_ok=1 imu_ok=1 tilt_ok=1 armed=0 alt=8cm vel=0cm/s out=0 corr=0 takeoff_thr=480 state=1 stick_ref=420 imu_pred=0 reliable=1 reject=0 limit=35 thr_ok=0 thr_min=80
 uptime=12345ms throttle=0 motor_test=0
 i2c: 0x68 0x76
 imu ok=1 acc_mg=12,-28,998 gyro_cdps=3,-2,1 temp=31.25C
 att cd roll=24 pitch=-16 yaw=110
 baro ok=1 temp=29.88C pressure=100820Pa altitude=8cm vel=0cm/s
-baro hold active=0 velctl=0 hold=0cm err=0cm target_vel=0cm/s base=0 corr=0 out=0
+baro hold active=0 velctl=0 hold=0cm err=0cm target_vel=0cm/s base=0 corr=0 out=0 state=1 stick_ref=420 imu_pred=0 reliable=1 reject=0 limit=35
 rc connected=1 failsafe=0 arm=0 baro=0 age=12ms
 rcmap order=AETR roll=CH1 pitch=CH2 throttle=CH3 yaw=CH4 arm=CH5 baro=CH6 raw_min=172 raw_mid=992 raw_max=1811
 stick r=0 p=0 y=0 t=0 raw=992,992,172,992,988,988,172,172,172,172,172,172,172,172,172,172
@@ -47,6 +47,9 @@ class ParserTest(unittest.TestCase):
         self.assertFalse(state["althold"]["active"])
         self.assertFalse(state["althold"]["throttle_ok"])
         self.assertEqual(state["althold"]["throttle_min"], 80)
+        self.assertTrue(state["althold"]["assist_reliable"])
+        self.assertFalse(state["althold"]["baro_rejected"])
+        self.assertEqual(state["althold"]["correction_limit"], 35)
         self.assertEqual(state["battery"]["voltage_mv"], 8404)
         self.assertEqual(state["battery"]["cells"], 2)
         self.assertEqual(state["clock"]["pll"], "HSE")
