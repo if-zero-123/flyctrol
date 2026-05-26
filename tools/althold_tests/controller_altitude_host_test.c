@@ -160,6 +160,39 @@ static void test_takeoff_spools_base_without_negative_baro_boost(void)
   }
 }
 
+static void test_slightly_above_center_does_not_force_hover_throttle(void)
+{
+  int16_t output = -1;
+  uint16_t base = 0U;
+  uint16_t previous = 0U;
+  uint32_t timestamp_ms = 100U;
+  mixer_feedback_t feedback = make_feedback();
+  controller_altitude_debug_t debug;
+
+  ControllerAltitude_Reset();
+  (void)update(BOARD_ALT_STICK_CENTER_PERMILLE, 0, 0, true, 0U, &feedback, timestamp_ms, &base, &output);
+
+  for (uint8_t i = 0U; i < 25U; i++)
+  {
+    timestamp_ms += 2U;
+    previous = base;
+    debug = update(BOARD_ALT_TAKEOFF_THROTTLE + 10U,
+                   0,
+                   0,
+                   true,
+                   0U,
+                   &feedback,
+                   timestamp_ms,
+                   &base,
+                   &output);
+    assert(debug.state == CONTROLLER_ALTITUDE_STATE_TAKEOFF);
+    assert((int16_t)(base - previous) <= 1);
+  }
+
+  assert(base < BOARD_ALT_TOY_HOVER_MIN_PERMILLE);
+  assert(output == 0);
+}
+
 static void test_midstick_runs_cascaded_hold_correction(void)
 {
   int16_t output = -1;
@@ -180,6 +213,38 @@ static void test_midstick_runs_cascaded_hold_correction(void)
   assert(debug.target_velocity_cms > 0);
   assert(abs_i16_local(debug.correction_permille) <= (int16_t)BOARD_ALT_OUTPUT_LIMIT_PERMILLE);
   assert(debug.output_permille <= (int16_t)(debug.base_permille + BOARD_ALT_OUTPUT_LIMIT_PERMILLE));
+}
+
+static void test_low_stick_has_enough_negative_authority_to_pull_down(void)
+{
+  int16_t output = -1;
+  uint16_t base = 0U;
+  uint32_t timestamp_ms = 100U;
+  mixer_feedback_t feedback = make_feedback();
+  controller_altitude_debug_t debug;
+
+  ControllerAltitude_Reset();
+  debug = update(BOARD_ALT_STICK_CENTER_PERMILLE, 0, 0, true, 0U, &feedback, timestamp_ms, &base, &output);
+  assert(debug.state == CONTROLLER_ALTITUDE_STATE_GROUND_IDLE);
+  for (uint16_t i = 0U; i < 430U; i++)
+  {
+    timestamp_ms += 2U;
+    debug = update(1000U, 0, 0, true, 0U, &feedback, timestamp_ms, &base, &output);
+    if (debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD)
+    {
+      break;
+    }
+  }
+  assert(debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD);
+  assert(debug.hover_permille > (int16_t)(BOARD_ALT_BASE_MIN_PERMILLE + 120U));
+
+  timestamp_ms += 25U;
+  debug = update(0U, 25, 0, true, 0U, &feedback, timestamp_ms, &base, &output);
+
+  assert(debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD);
+  assert(debug.target_velocity_cms <= (int16_t)(-BOARD_ALT_STICK_DESCEND_MAX_CMS + 2));
+  assert(output <= -80);
+  assert(debug.output_permille < debug.hover_permille);
 }
 
 static void test_ready_loss_freezes_without_reset(void)
@@ -286,7 +351,9 @@ int main(void)
 {
   test_ground_idle_holds_idle_at_or_below_center();
   test_takeoff_spools_base_without_negative_baro_boost();
+  test_slightly_above_center_does_not_force_hover_throttle();
   test_midstick_runs_cascaded_hold_correction();
+  test_low_stick_has_enough_negative_authority_to_pull_down();
   test_ready_loss_freezes_without_reset();
   test_stick_maps_to_velocity_and_velocity_pi_not_absolute_throttle();
   test_low_stick_descends_without_dropping_to_idle();

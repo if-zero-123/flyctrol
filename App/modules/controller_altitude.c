@@ -88,7 +88,7 @@ static int32_t output_max_permille(void)
 
 static int32_t hover_min_permille(void)
 {
-  return (int32_t)BOARD_ALT_TOY_HOVER_MIN_PERMILLE;
+  return (int32_t)BOARD_ALT_BASE_MIN_PERMILLE;
 }
 
 static int32_t hover_max_permille(void)
@@ -140,6 +140,29 @@ static bool stick_in_hold_deadband(uint16_t throttle_permille)
 {
   int32_t delta = (int32_t)throttle_permille - (int32_t)BOARD_ALT_STICK_CENTER_PERMILLE;
   return abs_i32(delta) <= (int32_t)BOARD_ALT_HOLD_DB_PERMILLE;
+}
+
+static int32_t stick_to_takeoff_base_permille(uint16_t throttle_permille)
+{
+  const int32_t threshold = (int32_t)BOARD_ALT_TAKEOFF_THROTTLE;
+  int32_t delta = (int32_t)throttle_permille - threshold;
+  int32_t range = 1000 - threshold;
+  int32_t headroom = (int32_t)BOARD_ALT_BASE_MAX_PERMILLE - (int32_t)BOARD_MOTOR_IDLE_PERMILLE;
+
+  if (delta < 0)
+  {
+    delta = 0;
+  }
+  if (range < 1)
+  {
+    range = 1;
+  }
+  if (headroom < 0)
+  {
+    headroom = 0;
+  }
+  return clamp_output_permille((int32_t)BOARD_MOTOR_IDLE_PERMILLE +
+                               ((delta * headroom) / range));
 }
 
 static int16_t slew_i16(int16_t current, int32_t desired, int32_t up_step, int32_t down_step)
@@ -462,12 +485,7 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
     int32_t takeoff_target_velocity = stick_to_target_velocity_cms(setpoint->throttle_permille,
                                                                    BOARD_ALT_TAKEOFF_CLIMB_MAX_CMS,
                                                                    0);
-    int32_t desired_base = (int32_t)s_hover_permille +
-                           (takeoff_target_velocity * (int32_t)BOARD_ALT_TAKEOFF_THRUST_PER_CMS);
-    if (desired_base < hover_min_permille())
-    {
-      desired_base = hover_min_permille();
-    }
+    int32_t desired_base = stick_to_takeoff_base_permille(setpoint->throttle_permille);
     if (desired_base > (int32_t)BOARD_ALT_BASE_MAX_PERMILLE)
     {
       desired_base = (int32_t)BOARD_ALT_BASE_MAX_PERMILLE;
@@ -535,7 +553,8 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
                                                 -BOARD_ALT_I_LIMIT_PERMILLE,
                                                 BOARD_ALT_I_LIMIT_PERMILLE);
 
-  float correction = (BOARD_ALT_VEL_P * (float)velocity_error_cms) +
+  float correction = (BOARD_ALT_VEL_FF * (float)target_velocity_cms) +
+                     (BOARD_ALT_VEL_P * (float)velocity_error_cms) +
                      s_velocity_integrator_permille;
   correction = clampf_local(correction,
                             -(float)BOARD_ALT_OUTPUT_LIMIT_PERMILLE,
