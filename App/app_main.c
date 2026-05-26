@@ -56,6 +56,11 @@ void App_Start(void)
     DebugUart_WriteLine("init: gyrocal");
     imu_ok = Mpu6050_CalibrateGyro(128U);
   }
+  if (imu_ok)
+  {
+    DebugUart_WriteLine("init: acccal");
+    imu_ok = Mpu6050_CalibrateAccel(128U);
+  }
   AppBootStage_Set(45U);
   DebugUart_WriteLine("init: bmp280");
   bool baro_ok = Bmp280_Init();
