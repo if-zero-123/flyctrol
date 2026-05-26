@@ -4,6 +4,7 @@
 #include "flight_types.h"
 
 void EstimatorAltitude_Init(void);
+void EstimatorAltitude_ResetDynamic(void);
 void EstimatorAltitude_PredictImu(const imu_sample_t *imu,
                                   const attitude_t *attitude,
                                   float dt_s);

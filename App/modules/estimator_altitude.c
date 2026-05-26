@@ -107,10 +107,21 @@ void EstimatorAltitude_Init(void)
   s_last_timestamp_ms = 0U;
 }
 
+void EstimatorAltitude_ResetDynamic(void)
+{
+  s_has_velocity = false;
+  s_spike_count = 0U;
+  s_fused_altitude_cm = s_filtered_cm;
+  s_velocity_cms = 0.0f;
+  s_accel_cms2 = 0.0f;
+  s_last_altitude_cm = (int32_t)s_filtered_cm;
+}
+
 void EstimatorAltitude_PredictImu(const imu_sample_t *imu,
                                   const attitude_t *attitude,
                                   float dt_s)
 {
+#if BOARD_ALT_IMU_PREDICT_ENABLE
   if ((imu == NULL) || (attitude == NULL) || !s_has_baseline ||
       !imu->healthy || !attitude->healthy || (dt_s <= 0.0f))
   {
@@ -138,6 +149,11 @@ void EstimatorAltitude_PredictImu(const imu_sample_t *imu,
                                 -(float)BOARD_BARO_VEL_LIMIT_CMS,
                                 (float)BOARD_BARO_VEL_LIMIT_CMS);
   s_fused_altitude_cm += s_velocity_cms * dt_s;
+#else
+  (void)imu;
+  (void)attitude;
+  (void)dt_s;
+#endif
 }
 
 void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)

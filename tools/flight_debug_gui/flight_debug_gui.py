@@ -1027,7 +1027,11 @@ class FlightDebugGui(tk.Tk):
             f"thr={int(bool(althold.get('throttle_ok', True)))} "
             f"hold={althold.get('hold_altitude_cm', althold.get('altitude_cm', '-'))}cm "
             f"vel={althold.get('velocity_cms', '-')}cm/s "
-            f"out={althold.get('output', '-')}"
+            f"target={althold.get('target_velocity_cms', '-')}cm/s "
+            f"base={althold.get('base', '-')} "
+            f"corr={althold.get('correction', '-')} "
+            f"out={althold.get('output', '-')} "
+            f"state={althold.get('state', '-')}"
         )
 
     @staticmethod

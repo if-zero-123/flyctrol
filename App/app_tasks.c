@@ -56,7 +56,7 @@ void App_CreateTasks(void)
   create_task(SafetyTask, "safety", 160U, 4U, 53U);
   create_task(BaroTask, "baro", 192U, 3U, 54U);
   create_task(BatteryTask, "battery", 144U, 2U, 55U);
-  create_task(CliTask, "cli", 512U, 1U, 57U);
+  create_task(CliTask, "cli", 384U, 1U, 57U);
 }
 
 static void StabilizerTask(void *argument)
@@ -68,6 +68,7 @@ static void StabilizerTask(void *argument)
   bool airmode_latched = false;
   bool previous_armed = false;
   bool takeoff_latched = false;
+  bool previous_altitude_active = false;
 
   for (;;)
   {
@@ -111,6 +112,7 @@ static void StabilizerTask(void *argument)
     {
       ControllerAttitude_Reset();
       ControllerAltitude_Reset();
+      EstimatorAltitude_ResetDynamic();
       MixerQuad_ResetThrottleRamp();
       Mpu6050_ResetFilters();
     }
@@ -118,6 +120,7 @@ static void StabilizerTask(void *argument)
     {
       ControllerAttitude_Reset();
       ControllerAltitude_Reset();
+      EstimatorAltitude_ResetDynamic();
       MixerQuad_ResetThrottleRamp();
       Mpu6050_ResetFilters();
       EstimatorAttitude_Init();
@@ -128,6 +131,7 @@ static void StabilizerTask(void *argument)
     {
       airmode_latched = false;
       takeoff_latched = false;
+      previous_altitude_active = false;
     }
     else if ((BOARD_AIRMODE_ENABLE != 0U) && (sp.throttle_permille >= BOARD_AIRMODE_START_THROTTLE))
     {
@@ -165,7 +169,12 @@ static void StabilizerTask(void *argument)
                           (absf_local(attitude.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
                           (absf_local(attitude.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
     bool altitude_active = altitude_ready;
+    if (altitude_active && !previous_altitude_active)
+    {
+      EstimatorAltitude_ResetDynamic();
+    }
     control.altitude_permille = ControllerAltitude_Update(&baro, &sp, altitude_active, 0.002f);
+    previous_altitude_active = altitude_active;
 
     if (Safety_CanRunMotors())
     {

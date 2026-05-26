@@ -64,7 +64,7 @@ static const char *onoff(uint8_t value)
 
 static void print_help(void)
 {
-  DebugUart_WriteLine("cmd: help status clock tasks heap i2cscan imu baro rc rcmap batt battdiag");
+  DebugUart_WriteLine("cmd: help status clock heap i2cscan imu baro rc rcmap batt battdiag");
   DebugUart_WriteLine("cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]");
   DebugUart_WriteLine("cmd: flight shows last armed-flight summary");
   DebugUart_WriteLine("cmd: flight core: airmode=on crash_protect=on brushed_pwm=timer duty");
@@ -135,7 +135,7 @@ static void print_status(void)
                    st.baro_mode ? 1U : 0U,
                    st.air_mode ? 1U : 0U,
                    st.crash_detected ? 1U : 0U);
-  DebugUart_Printf("althold req=%u ready=%u active=%u baro_ok=%u imu_ok=%u tilt_ok=%u armed=%u alt=%ldcm vel=%dcm/s out=%d corr=%d takeoff_thr=%u\r\n",
+  DebugUart_Printf("althold req=%u ready=%u active=%u baro_ok=%u imu_ok=%u tilt_ok=%u armed=%u alt=%ldcm vel=%dcm/s out=%d corr=%d takeoff_thr=%u state=%u stick_ref=%d imu_pred=%u\r\n",
                    rc.baro_mode ? 1U : 0U,
                    alt_ready ? 1U : 0U,
                    alt.active ? 1U : 0U,
@@ -147,7 +147,10 @@ static void print_status(void)
                    baro.velocity_cms,
                    alt.output_permille,
                    alt.correction_permille,
-                   BOARD_ALT_TAKEOFF_THROTTLE);
+                   BOARD_ALT_TAKEOFF_THROTTLE,
+                   (unsigned int)alt.state,
+                   alt.stick_reference_permille,
+                   BOARD_ALT_IMU_PREDICT_ENABLE);
   DebugUart_Printf("uptime=%lums throttle=%u motor_test=%u\r\n",
                    (unsigned long)st.uptime_ms,
                    st.throttle_permille,
@@ -164,12 +167,18 @@ static void print_status(void)
                    BOARD_ALT_STICK_CENTER_PERMILLE,
                    BOARD_ALT_ARM_CENTER_TOLERANCE,
                    BOARD_BATT_CRITICAL_MV);
-  DebugUart_Printf("alt_profile stick_mid=%u hover_base=%u takeoff_thr=%u vel_max=%d hold_vel_max=%d\r\n",
+  DebugUart_Printf("alt_profile stick_mid=%u hover_base=%u takeoff_thr=%u climb_max=%d descend_max=%d hold_vel_max=%d takeoff_climb_max=%d out_limit=%d slew_up=%d slew_down=%d brake=%u\r\n",
                    BOARD_ALT_STICK_CENTER_PERMILLE,
                    BOARD_ALT_HOVER_THRUST_PERMILLE,
                    BOARD_ALT_TAKEOFF_THROTTLE,
-                   BOARD_ALT_STICK_MAX_VEL_CMS,
-                   BOARD_ALT_HOLD_MAX_VEL_CMS);
+                   BOARD_ALT_STICK_CLIMB_MAX_CMS,
+                   BOARD_ALT_STICK_DESCEND_MAX_CMS,
+                   BOARD_ALT_HOLD_MAX_VEL_CMS,
+                   BOARD_ALT_TAKEOFF_CLIMB_MAX_CMS,
+                   BOARD_ALT_OUTPUT_LIMIT_PERMILLE,
+                   BOARD_ALT_OUTPUT_SLEW_UP_PER_SAMPLE,
+                   BOARD_ALT_OUTPUT_SLEW_DOWN_PER_SAMPLE,
+                   BOARD_ALT_ASCENT_BRAKE_PERMILLE);
   DebugUart_Printf("flight_core airmode=%s start_thr=%u crash_angle=%lddeg crash_gyro=%s/%lddps hold=%ums\r\n",
                    onoff(BOARD_AIRMODE_ENABLE),
                    BOARD_AIRMODE_START_THROTTLE,
@@ -183,15 +192,6 @@ static void print_status(void)
                    (long)BOARD_MAX_LEVEL_RATE_DPS,
                    (long)BOARD_MAX_YAW_RATE_DPS,
                    BOARD_RC_EXPO_PERCENT);
-}
-
-static void print_tasks(void)
-{
-  char buf[512];
-  memset(buf, 0, sizeof(buf));
-  DebugUart_WriteLine("name          state prio stack num");
-  vTaskList(buf);
-  DebugUart_Write(buf);
 }
 
 static void print_heap(void)
@@ -265,7 +265,7 @@ static void print_baro(void)
                    (long)baro.pressure_pa,
                    (long)baro.altitude_cm,
                    baro.velocity_cms);
-  DebugUart_Printf("baro hold active=%u velctl=%u hold=%ldcm err=%dcm target_vel=%dcm/s base=%d corr=%d out=%d\r\n",
+  DebugUart_Printf("baro hold active=%u velctl=%u hold=%ldcm err=%dcm target_vel=%dcm/s base=%d corr=%d out=%d state=%u stick_ref=%d imu_pred=%u\r\n",
                    alt.active ? 1U : 0U,
                    alt.velocity_control ? 1U : 0U,
                    (long)alt.hold_altitude_cm,
@@ -273,7 +273,10 @@ static void print_baro(void)
                    alt.target_velocity_cms,
                    alt.throttle_base_permille,
                    alt.correction_permille,
-                   alt.output_permille);
+                   alt.output_permille,
+                   (unsigned int)alt.state,
+                   alt.stick_reference_permille,
+                   BOARD_ALT_IMU_PREDICT_ENABLE);
 }
 
 static void print_rc(void)
@@ -412,7 +415,7 @@ static void print_control(void)
                    (long)float_to_milli(st.control.pitch),
                    (long)float_to_milli(st.control.yaw),
                    st.control.altitude_permille);
-  DebugUart_Printf("control alt active=%u velctl=%u hold=%ldcm err=%dcm vel=%d target=%d base=%d corr=%d out=%d\r\n",
+  DebugUart_Printf("control alt active=%u velctl=%u hold=%ldcm err=%dcm vel=%d target=%d base=%d corr=%d out=%d state=%u stick_ref=%d imu_pred=%u\r\n",
                    alt.active ? 1U : 0U,
                    alt.velocity_control ? 1U : 0U,
                    (long)alt.hold_altitude_cm,
@@ -421,7 +424,10 @@ static void print_control(void)
                    alt.target_velocity_cms,
                    alt.throttle_base_permille,
                    alt.correction_permille,
-                   alt.output_permille);
+                   alt.output_permille,
+                   (unsigned int)alt.state,
+                   alt.stick_reference_permille,
+                   BOARD_ALT_IMU_PREDICT_ENABLE);
   DebugUart_Printf("control rate_sp_dps r=%d p=%d y=%d gyro_dps r=%d p=%d y=%d\r\n",
                    dbg.rate_setpoint_dps[PID_AXIS_ROLL],
                    dbg.rate_setpoint_dps[PID_AXIS_PITCH],
@@ -764,10 +770,6 @@ static void execute_line(char *line)
   else if (strcmp(cmd, "clock") == 0)
   {
     print_clock();
-  }
-  else if (strcmp(cmd, "tasks") == 0)
-  {
-    print_tasks();
   }
   else if (strcmp(cmd, "heap") == 0)
   {

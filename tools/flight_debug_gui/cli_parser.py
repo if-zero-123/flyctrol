@@ -274,7 +274,8 @@ class FlightCliParser:
     def _parse_baro_hold(self, text: str) -> None:
         m = re.search(
             rf"baro hold active=(\d+) velctl=(\d+) hold={_INT}cm err={_INT}cm "
-            rf"target_vel={_INT}cm/s base={_INT} corr={_INT} out={_INT}",
+            rf"target_vel={_INT}cm/s base={_INT} corr={_INT} out={_INT}"
+            rf"(?: state=(\d+) stick_ref={_INT} imu_pred=(\d+))?",
             text,
         )
         if not m:
@@ -292,6 +293,10 @@ class FlightCliParser:
                 "output": int(m.group(8)),
             }
         )
+        if m.group(9) is not None:
+            alt["state"] = int(m.group(9))
+            alt["stick_reference"] = int(m.group(10))
+            alt["imu_predict"] = bool(int(m.group(11)))
         self.state["althold"] = alt
 
     def _parse_rc_status(self, text: str) -> None:
@@ -426,7 +431,8 @@ class FlightCliParser:
     def _parse_control_alt(self, text: str) -> None:
         m = re.search(
             rf"control alt active=(\d+) velctl=(\d+) hold={_INT}cm err={_INT}cm "
-            rf"vel={_INT} target={_INT} base={_INT} corr={_INT}",
+            rf"vel={_INT} target={_INT} base={_INT} corr={_INT}"
+            rf"(?: out={_INT} state=(\d+) stick_ref={_INT} imu_pred=(\d+))?",
             text,
         )
         if not m:
@@ -444,6 +450,11 @@ class FlightCliParser:
                 "correction": int(m.group(8)),
             }
         )
+        if m.group(9) is not None:
+            alt["output"] = int(m.group(9))
+            alt["state"] = int(m.group(10))
+            alt["stick_reference"] = int(m.group(11))
+            alt["imu_predict"] = bool(int(m.group(12)))
         self.state["althold"] = alt
 
     def _parse_motors(self, text: str) -> None:

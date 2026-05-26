@@ -9,7 +9,7 @@
 #include "task.h"
 #include "main.h"
 
-#define DEBUG_UART_RX_BUF_SIZE 256U
+#define DEBUG_UART_RX_BUF_SIZE 128U
 
 static SemaphoreHandle_t s_tx_mutex;
 static uint8_t s_rx_irq_byte;

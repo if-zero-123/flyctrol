@@ -11,13 +11,22 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
                                   bool active,
                                   float dt_s);
 
+typedef enum {
+  CONTROLLER_ALTITUDE_STATE_INACTIVE = 0,
+  CONTROLLER_ALTITUDE_STATE_GROUND_IDLE,
+  CONTROLLER_ALTITUDE_STATE_TAKEOFF,
+  CONTROLLER_ALTITUDE_STATE_FLYING
+} controller_altitude_state_t;
+
 typedef struct {
   bool active;
   bool velocity_control;
+  controller_altitude_state_t state;
   int32_t hold_altitude_cm;
   int16_t altitude_error_cm;
   int16_t velocity_cms;
   int16_t target_velocity_cms;
+  int16_t stick_reference_permille;
   int16_t throttle_base_permille;
   int16_t correction_permille;
   int16_t output_permille;

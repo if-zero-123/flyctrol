@@ -18,8 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "cmsis_os.h"
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
@@ -54,8 +52,6 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart2_rx;
-
-osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -70,9 +66,8 @@ static void MX_TIM1_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
-void StartDefaultTask(void const * argument);
-
 /* USER CODE BEGIN PFP */
+static void StartupTask(void *argument);
 
 /* USER CODE END PFP */
 
@@ -218,13 +213,13 @@ static uint32_t StackOverflowStageFromName(const char *name)
   {
     return 31U;
   }
-  if (strcmp(name, "defaultTask") == 0)
-  {
-    return 61U;
-  }
   if (strcmp(name, "stabilize") == 0)
   {
     return 62U;
+  }
+  if (strcmp(name, "startup") == 0)
+  {
+    return 61U;
   }
   if (strcmp(name, "crsf") == 0)
   {
@@ -341,11 +336,17 @@ int main(void)
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
-  /* Create the thread(s) */
-  /* definition and creation of defaultTask */
+  /* Create a small startup task so App_Start runs with the RTOS alive. */
   s_boot_stage = 11U;
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 512);
-  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+  if (xTaskCreate(StartupTask,
+                  "startup",
+                  256U,
+                  NULL,
+                  tskIDLE_PRIORITY + 1U,
+                  NULL) != pdPASS)
+  {
+    Error_Handler();
+  }
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -353,7 +354,7 @@ int main(void)
 
   /* Start scheduler */
   s_boot_stage = 12U;
-  osKernelStart();
+  vTaskStartScheduler();
 
   /* We should never get here as control is now taken by the scheduler */
 
@@ -776,6 +777,18 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void StartupTask(void *argument)
+{
+  (void)argument;
+  s_boot_stage = 20U;
+  App_Start();
+  s_boot_stage = 21U;
+  vTaskDelete(NULL);
+  for (;;)
+  {
+  }
+}
+
 void AppBootStage_Set(uint32_t stage)
 {
   s_boot_stage = stage;
@@ -810,30 +823,6 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 }
 
 /* USER CODE END 4 */
-
-/* USER CODE BEGIN Header_StartDefaultTask */
-/**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void const * argument)
-{
-  /* USER CODE BEGIN 5 */
-  s_boot_stage = 20U;
-  {
-    const uint8_t task_msg[] = "defaultTask start\r\n";
-    (void)HAL_UART_Transmit(&huart1, (uint8_t *)task_msg, sizeof(task_msg) - 1U, 200U);
-  }
-  App_Start();
-  s_boot_stage = 21U;
-  vTaskDelete(NULL);
-  for (;;)
-  {
-  }
-  /* USER CODE END 5 */
-}
 
 /**
   * @brief  Period elapsed callback in non blocking mode
