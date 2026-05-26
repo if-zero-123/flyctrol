@@ -341,9 +341,16 @@ int main(void)
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
-  /* Create the real application tasks before starting the scheduler. */
+  /* Create the thread(s) */
+  /* definition and creation of defaultTask */
   s_boot_stage = 11U;
-  App_Start();
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 384);
+  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+  if (defaultTaskHandle == NULL)
+  {
+    s_boot_stage = 50U;
+    Error_Handler();
+  }
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
