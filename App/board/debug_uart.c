@@ -12,6 +12,7 @@
 #define DEBUG_UART_RX_BUF_SIZE 128U
 
 static SemaphoreHandle_t s_tx_mutex;
+static char s_printf_buf[192];
 static uint8_t s_rx_irq_byte;
 static volatile uint8_t s_rx_buf[DEBUG_UART_RX_BUF_SIZE];
 static volatile uint16_t s_rx_head;
@@ -45,15 +46,20 @@ void DebugUart_Write(const char *text)
     return;
   }
 
-  bool lock = (s_tx_mutex != NULL) && (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED);
-  if (lock)
+  bool use_lock = (s_tx_mutex != NULL) && (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED);
+  bool locked = false;
+  if (use_lock)
   {
-    (void)xSemaphoreTake(s_tx_mutex, pdMS_TO_TICKS(100));
+    locked = xSemaphoreTake(s_tx_mutex, pdMS_TO_TICKS(100)) == pdTRUE;
+    if (!locked)
+    {
+      return;
+    }
   }
 
   (void)HAL_UART_Transmit(&huart1, (uint8_t *)text, (uint16_t)len, 200U);
 
-  if (lock)
+  if (locked)
   {
     (void)xSemaphoreGive(s_tx_mutex);
   }
@@ -67,18 +73,35 @@ void DebugUart_WriteLine(const char *text)
 
 void DebugUart_Printf(const char *fmt, ...)
 {
-  char buf[192];
+  bool use_lock = (s_tx_mutex != NULL) && (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED);
+  bool locked = false;
+  if (use_lock)
+  {
+    locked = xSemaphoreTake(s_tx_mutex, pdMS_TO_TICKS(100)) == pdTRUE;
+    if (!locked)
+    {
+      return;
+    }
+  }
+
   va_list args;
   va_start(args, fmt);
-  int n = vsnprintf(buf, sizeof(buf), fmt, args);
+  int n = vsnprintf(s_printf_buf, sizeof(s_printf_buf), fmt, args);
   va_end(args);
 
-  if (n <= 0)
+  if (n > 0)
   {
-    return;
+    s_printf_buf[sizeof(s_printf_buf) - 1U] = '\0';
+    (void)HAL_UART_Transmit(&huart1,
+                            (uint8_t *)s_printf_buf,
+                            (uint16_t)strlen(s_printf_buf),
+                            200U);
   }
-  buf[sizeof(buf) - 1U] = '\0';
-  DebugUart_Write(buf);
+
+  if (locked)
+  {
+    (void)xSemaphoreGive(s_tx_mutex);
+  }
 }
 
 bool DebugUart_ReadByte(uint8_t *byte, uint32_t timeout_ms)

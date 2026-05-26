@@ -86,7 +86,7 @@
 #define configMAX_CO_ROUTINE_PRIORITIES          ( 2 )
 
 /* The following flag must be enabled only when using newlib */
-#define configUSE_NEWLIB_REENTRANT          1
+#define configUSE_NEWLIB_REENTRANT          0
 
 /* Set the following definitions to 1 to include the API function, or zero
 to exclude the API function. */
