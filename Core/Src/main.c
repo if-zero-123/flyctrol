@@ -341,16 +341,10 @@ int main(void)
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
-  /* Create the thread(s) */
-  /* definition and creation of defaultTask */
+  /* Create application tasks before starting the scheduler.
+     Heavy board/sensor init runs on MSP instead of a temporary RTOS task stack. */
   s_boot_stage = 11U;
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 384);
-  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
-  if (defaultTaskHandle == NULL)
-  {
-    s_boot_stage = 50U;
-    Error_Handler();
-  }
+  App_Start();
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */

@@ -19,8 +19,6 @@
 #include "telemetry.h"
 #include "topic.h"
 
-static bool s_telemetry_log;
-
 void App_Start(void)
 {
   AppBootStage_Set(40U);
@@ -74,14 +72,4 @@ void App_Start(void)
   App_CreateTasks();
   AppBootStage_Set(49U);
   DebugUart_WriteLine("init: done");
-}
-
-void App_SetTelemetryLog(bool enabled)
-{
-  s_telemetry_log = enabled;
-}
-
-bool App_GetTelemetryLog(void)
-{
-  return s_telemetry_log;
 }

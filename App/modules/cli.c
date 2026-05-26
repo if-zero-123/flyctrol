@@ -69,7 +69,7 @@ static void print_help(void)
   DebugUart_WriteLine("cmd: flight core: airmode=on crash_protect=on brushed_pwm=timer duty");
   DebugUart_WriteLine("cmd: motoridle [0-200], motormax [700-1000], motor unlock|stop|<1-4> <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <P> <I> <D>|safe|bf] uses BF-style units");
-  DebugUart_WriteLine("cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm log on|off reboot");
+  DebugUart_WriteLine("cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm reboot");
 }
 
 static const char *sysclk_source_name(void)
@@ -875,12 +875,6 @@ static void execute_line(char *line)
   {
     Safety_RequestDisarm();
     DebugUart_WriteLine("disarmed");
-  }
-  else if (strcmp(cmd, "log") == 0)
-  {
-    bool on = (a1 != NULL) && (strcmp(a1, "on") == 0);
-    App_SetTelemetryLog(on);
-    DebugUart_Printf("log=%u\r\n", on ? 1U : 0U);
   }
   else if (strcmp(cmd, "reboot") == 0)
   {

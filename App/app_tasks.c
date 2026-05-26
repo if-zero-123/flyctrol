@@ -21,7 +21,6 @@
 #include "motor_pwm.h"
 #include "mpu6050.h"
 #include "safety.h"
-#include "telemetry.h"
 #include "topic.h"
 
 static void StabilizerTask(void *argument);
@@ -29,7 +28,6 @@ static void CrsfTask(void *argument);
 static void SafetyTask(void *argument);
 static void BaroTask(void *argument);
 static void BatteryTask(void *argument);
-static void TelemetryTask(void *argument);
 static void CliTask(void *argument);
 
 static float absf_local(float v)
@@ -58,7 +56,6 @@ void App_CreateTasks(void)
   create_task(SafetyTask, "safety", 128U, 4U, 53U);
   create_task(BaroTask, "baro", 160U, 3U, 54U);
   create_task(BatteryTask, "battery", 128U, 2U, 55U);
-  create_task(TelemetryTask, "telem", 160U, 1U, 56U);
   create_task(CliTask, "cli", 384U, 1U, 57U);
 }
 
@@ -256,17 +253,6 @@ static void BatteryTask(void *argument)
       Topic_PublishBattery(&batt);
     }
     vTaskDelayUntil(&last, pdMS_TO_TICKS(100U));
-  }
-}
-
-static void TelemetryTask(void *argument)
-{
-  (void)argument;
-  TickType_t last = xTaskGetTickCount();
-  for (;;)
-  {
-    Telemetry_PrintOnce();
-    vTaskDelayUntil(&last, pdMS_TO_TICKS(200U));
   }
 }
 
