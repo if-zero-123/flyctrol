@@ -93,8 +93,8 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
     s_active = true;
     s_velocity_control = false;
     s_hold_altitude_cm = baro->altitude_cm;
-    s_stick_reference_permille = (int16_t)BOARD_THROTTLE_HOVER_PERMILLE;
-    s_throttle_base_permille = clamp_i16(BOARD_THROTTLE_HOVER_PERMILLE,
+    s_stick_reference_permille = (int16_t)BOARD_ALT_STICK_CENTER_PERMILLE;
+    s_throttle_base_permille = clamp_i16(BOARD_ALT_HOVER_THRUST_PERMILLE,
                                          BOARD_ALT_BASE_MIN_PERMILLE,
                                          BOARD_ALT_BASE_MAX_PERMILLE);
     s_integrator_permille = 0.0f;

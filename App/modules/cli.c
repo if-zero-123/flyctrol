@@ -163,9 +163,15 @@ static void print_status(void)
                    st.arm_block_flags,
                    BOARD_ARM_SWITCH_DEBOUNCE_MS,
                    BOARD_ARM_THROTTLE_MAX,
-                   BOARD_THROTTLE_HOVER_PERMILLE,
+                   BOARD_ALT_STICK_CENTER_PERMILLE,
                    BOARD_ALT_ARM_CENTER_TOLERANCE,
                    BOARD_BATT_CRITICAL_MV);
+  DebugUart_Printf("alt_profile stick_mid=%u hover_base=%u takeoff_thr=%u vel_max=%d hold_vel_max=%d\r\n",
+                   BOARD_ALT_STICK_CENTER_PERMILLE,
+                   BOARD_ALT_HOVER_THRUST_PERMILLE,
+                   BOARD_ALT_TAKEOFF_THROTTLE,
+                   BOARD_ALT_STICK_MAX_VEL_CMS,
+                   BOARD_ALT_HOLD_MAX_VEL_CMS);
   DebugUart_Printf("flight_core airmode=%s start_thr=%u crash_angle=%lddeg crash_gyro=%s/%lddps hold=%ums\r\n",
                    onoff(BOARD_AIRMODE_ENABLE),
                    BOARD_AIRMODE_START_THROTTLE,

@@ -136,10 +136,10 @@ void Safety_Update(void)
     s_arm_seen_low = true;
   }
   bool throttle_low = rc.throttle <= BOARD_ARM_THROTTLE_MAX;
-  uint16_t hover = BOARD_THROTTLE_HOVER_PERMILLE;
+  uint16_t stick_center = BOARD_ALT_STICK_CENTER_PERMILLE;
   bool throttle_alt_arm_centered = rc.baro_mode && baro_recent &&
-                                   (rc.throttle >= (hover - BOARD_ALT_ARM_CENTER_TOLERANCE)) &&
-                                   (rc.throttle <= (hover + BOARD_ALT_ARM_CENTER_TOLERANCE));
+                                   (rc.throttle >= (stick_center - BOARD_ALT_ARM_CENTER_TOLERANCE)) &&
+                                   (rc.throttle <= (stick_center + BOARD_ALT_ARM_CENTER_TOLERANCE));
   bool throttle_arm_ok = throttle_low || throttle_alt_arm_centered;
   bool rc_lost_stop = !rc_recent_raw;
   bool imu_lost_stop = !attitude_recent_raw;
