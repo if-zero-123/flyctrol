@@ -4,6 +4,7 @@
 
 #include "board_config.h"
 #include "estimator_attitude.h"
+#include "topic.h"
 
 static bool s_has_baseline;
 static bool s_has_velocity;
@@ -197,8 +198,11 @@ void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
 
   if (s_has_velocity && (absf_local((float)raw_cm - s_filtered_cm) > (float)BOARD_BARO_ALT_SPIKE_REJECT_CM))
   {
-    s_spike_count++;
-    if (s_spike_count >= 8U)
+    if (s_spike_count < 8U)
+    {
+      s_spike_count++;
+    }
+    if ((s_spike_count >= 8U) && !Topic_GetStatus().armed)
     {
       restart_baseline(baro->pressure_pa, baro->timestamp_ms);
       out->altitude_cm = 0;

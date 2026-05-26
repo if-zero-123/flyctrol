@@ -1,6 +1,7 @@
 #include "telemetry.h"
 
 #include "app_main.h"
+#include "controller_altitude.h"
 #include "debug_uart.h"
 #include "motor_pwm.h"
 #include "topic.h"
@@ -42,7 +43,9 @@ void Telemetry_PrintOnce(void)
   attitude_t att = Topic_GetAttitude();
   baro_sample_t baro = Topic_GetBaro();
   battery_status_t batt = Topic_GetBattery();
+  controller_altitude_debug_t alt;
   float motor[4];
+  ControllerAltitude_GetDebug(&alt);
   MotorPwm_GetLast(motor);
 
   DebugUart_Printf("st arm=%u fs=%u flags=0x%04X dis=0x%04X rc=%u imu=%u baro=%u air=%u crash=%u thr=%u batt=%umV\r\n",
@@ -64,15 +67,17 @@ void Telemetry_PrintOnce(void)
                    (long)baro.altitude_cm,
                    baro.velocity_cms,
                    (long)baro.pressure_pa);
-  DebugUart_Printf("ctl sp=%ld,%ld,%ld thr=%u out=%ld,%ld,%ld alt=%d\r\n",
+  DebugUart_Printf("ctl sp=%ld,%ld,%ld thr=%u alt_act=%u alt_thr=%d alt_corr=%d out=%ld,%ld,%ld\r\n",
                    (long)deg_to_cdeg(st.setpoint.roll_deg),
                    (long)deg_to_cdeg(st.setpoint.pitch_deg),
                    (long)deg_to_cdeg(st.setpoint.yaw_rate_dps),
                    st.setpoint.throttle_permille,
+                   alt.active ? 1U : 0U,
+                   st.control.altitude_permille,
+                   alt.correction_permille,
                    (long)(st.control.roll * 1000.0f),
                    (long)(st.control.pitch * 1000.0f),
-                   (long)(st.control.yaw * 1000.0f),
-                   st.control.altitude_permille);
+                   (long)(st.control.yaw * 1000.0f));
   DebugUart_Printf("mot %ld %ld %ld %ld\r\n",
                    (long)duty_to_permille(motor[0]),
                    (long)duty_to_permille(motor[1]),

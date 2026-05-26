@@ -68,7 +68,7 @@ typedef struct {
   float roll;
   float pitch;
   float yaw;
-  int16_t altitude_permille;
+  int16_t altitude_permille; /* Alt-hold absolute throttle for telemetry; zero before mixer add. */
 } control_output_t;
 
 typedef struct {

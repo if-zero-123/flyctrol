@@ -124,8 +124,6 @@ static void print_status(void)
                  (absf_local(att.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
                  (absf_local(att.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
   bool alt_ready = rc.baro_mode && st.baro_ok && st.imu_ok && tilt_ok;
-  bool alt_throttle_ok = ControllerAltitude_IsActive() ||
-                         (rc.throttle >= BOARD_ALT_ENABLE_THROTTLE_MIN);
 
   DebugUart_Printf("armed=%u failsafe=%u rc=%u imu=%u baro=%u mode angle=%u baro=%u air=%u crash=%u\r\n",
                    st.armed ? 1U : 0U,
@@ -137,7 +135,7 @@ static void print_status(void)
                    st.baro_mode ? 1U : 0U,
                    st.air_mode ? 1U : 0U,
                    st.crash_detected ? 1U : 0U);
-  DebugUart_Printf("althold req=%u ready=%u active=%u baro_ok=%u imu_ok=%u tilt_ok=%u armed=%u alt=%ldcm vel=%dcm/s out=%d thr_ok=%u thr_min=%u\r\n",
+  DebugUart_Printf("althold req=%u ready=%u active=%u baro_ok=%u imu_ok=%u tilt_ok=%u armed=%u alt=%ldcm vel=%dcm/s out=%d corr=%d takeoff_thr=%u\r\n",
                    rc.baro_mode ? 1U : 0U,
                    alt_ready ? 1U : 0U,
                    alt.active ? 1U : 0U,
@@ -148,8 +146,8 @@ static void print_status(void)
                    (long)baro.altitude_cm,
                    baro.velocity_cms,
                    alt.output_permille,
-                   alt_throttle_ok ? 1U : 0U,
-                   BOARD_ALT_ENABLE_THROTTLE_MIN);
+                   alt.correction_permille,
+                   BOARD_ALT_TAKEOFF_THROTTLE);
   DebugUart_Printf("uptime=%lums throttle=%u motor_test=%u\r\n",
                    (unsigned long)st.uptime_ms,
                    st.throttle_permille,
@@ -409,12 +407,12 @@ static void print_control(void)
   DebugUart_Printf("control trim_cd r=%ld p=%ld\r\n",
                    (long)deg_to_cdeg(trim_roll),
                    (long)deg_to_cdeg(trim_pitch));
-  DebugUart_Printf("control out_milli r=%ld p=%ld y=%ld alt=%d\r\n",
+  DebugUart_Printf("control out_milli r=%ld p=%ld y=%ld alt_thr=%d\r\n",
                    (long)float_to_milli(st.control.roll),
                    (long)float_to_milli(st.control.pitch),
                    (long)float_to_milli(st.control.yaw),
                    st.control.altitude_permille);
-  DebugUart_Printf("control alt active=%u velctl=%u hold=%ldcm err=%dcm vel=%d target=%d base=%d corr=%d\r\n",
+  DebugUart_Printf("control alt active=%u velctl=%u hold=%ldcm err=%dcm vel=%d target=%d base=%d corr=%d out=%d\r\n",
                    alt.active ? 1U : 0U,
                    alt.velocity_control ? 1U : 0U,
                    (long)alt.hold_altitude_cm,
@@ -422,7 +420,8 @@ static void print_control(void)
                    alt.velocity_cms,
                    alt.target_velocity_cms,
                    alt.throttle_base_permille,
-                   alt.correction_permille);
+                   alt.correction_permille,
+                   alt.output_permille);
   DebugUart_Printf("control rate_sp_dps r=%d p=%d y=%d gyro_dps r=%d p=%d y=%d\r\n",
                    dbg.rate_setpoint_dps[PID_AXIS_ROLL],
                    dbg.rate_setpoint_dps[PID_AXIS_PITCH],

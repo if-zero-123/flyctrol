@@ -105,6 +105,8 @@ static void StabilizerTask(void *argument)
     Safety_Update();
     flight_status_t status = Safety_GetStatus();
     baro_sample_t baro = Topic_GetBaro();
+    bool baro_recent = baro.healthy &&
+                       ((BoardTime_Millis() - baro.timestamp_ms) <= BOARD_BARO_TIMEOUT_MS);
     if (status.armed && !previous_armed)
     {
       ControllerAttitude_Reset();
@@ -135,14 +137,17 @@ static void StabilizerTask(void *argument)
     {
       takeoff_latched = true;
     }
-    else if (status.armed && rc.baro_mode && (sp.throttle_permille >= BOARD_ALT_TAKEOFF_THROTTLE))
+    else if (status.armed && rc.baro_mode && (sp.throttle_permille > BOARD_ALT_TAKEOFF_THROTTLE))
     {
       takeoff_latched = true;
     }
     sp.air_mode = (BOARD_AIRMODE_ENABLE != 0U) && airmode_latched;
+    bool baro_mode_requested = rc.baro_mode;
     bool control_enabled = status.armed &&
                            takeoff_latched &&
-                           ((sp.throttle_permille > BOARD_ARM_THROTTLE_MAX) || sp.air_mode);
+                           (baro_mode_requested ||
+                            (sp.throttle_permille > BOARD_ARM_THROTTLE_MAX) ||
+                            sp.air_mode);
     if (!control_enabled)
     {
       ControllerAttitude_Reset();
@@ -156,21 +161,35 @@ static void StabilizerTask(void *argument)
     {
       control = status.control;
     }
-    bool baro_recent = baro.healthy &&
-                       ((BoardTime_Millis() - baro.timestamp_ms) <= BOARD_BARO_TIMEOUT_MS);
     bool altitude_ready = control_enabled && status.baro_mode && attitude.healthy && baro_recent &&
                           (absf_local(attitude.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
                           (absf_local(attitude.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
-    bool altitude_active = altitude_ready &&
-                           (ControllerAltitude_IsActive() ||
-                            (sp.throttle_permille >= BOARD_ALT_ENABLE_THROTTLE_MIN));
+    bool altitude_active = altitude_ready;
     control.altitude_permille = ControllerAltitude_Update(&baro, &sp, altitude_active, 0.002f);
 
     if (Safety_CanRunMotors())
     {
       if (control_enabled)
       {
-        MixerQuad_Mix(sp.throttle_permille, &control, motor);
+        if (altitude_active)
+        {
+          int16_t altitude_throttle = control.altitude_permille;
+          if (altitude_throttle < 0)
+          {
+            altitude_throttle = 0;
+          }
+          if (altitude_throttle > 1000)
+          {
+            altitude_throttle = 1000;
+          }
+          control_output_t mix_control = control;
+          mix_control.altitude_permille = 0;
+          MixerQuad_Mix((uint16_t)altitude_throttle, &mix_control, motor);
+        }
+        else
+        {
+          MixerQuad_Mix(sp.throttle_permille, &control, motor);
+        }
         MotorPwm_Set4(motor);
       }
       else
