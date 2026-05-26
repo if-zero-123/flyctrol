@@ -180,6 +180,25 @@ static int16_t slew_i16(int16_t current, int32_t desired, int32_t up_step, int32
   return clamp_i16((int32_t)current + delta, output_min_permille(), output_max_permille());
 }
 
+static int16_t slew_correction_i16(int16_t current, int32_t desired)
+{
+  desired = clamp_i32(desired,
+                      -(int32_t)BOARD_ALT_OUTPUT_LIMIT_PERMILLE,
+                      (int32_t)BOARD_ALT_OUTPUT_LIMIT_PERMILLE);
+  int32_t delta = desired - (int32_t)current;
+  if (delta > (int32_t)BOARD_ALT_CORR_SLEW_UP_PER_SAMPLE)
+  {
+    delta = (int32_t)BOARD_ALT_CORR_SLEW_UP_PER_SAMPLE;
+  }
+  else if (delta < -(int32_t)BOARD_ALT_CORR_SLEW_DOWN_PER_SAMPLE)
+  {
+    delta = -(int32_t)BOARD_ALT_CORR_SLEW_DOWN_PER_SAMPLE;
+  }
+  return clamp_i16((int32_t)current + delta,
+                   -(int32_t)BOARD_ALT_OUTPUT_LIMIT_PERMILLE,
+                   (int32_t)BOARD_ALT_OUTPUT_LIMIT_PERMILLE);
+}
+
 static uint16_t freeze_max_samples(void)
 {
   uint32_t samples = ((uint32_t)BOARD_ALT_FREEZE_HOLD_MS * (uint32_t)BOARD_CONTROL_LOOP_HZ) / 1000U;
@@ -567,7 +586,9 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
       correction = 0.0f;
     }
   }
-  set_output_from_base_and_correction(s_hover_permille, float_to_i16(correction));
+  int16_t correction_permille = slew_correction_i16(s_last_correction_permille,
+                                                    float_to_i16(correction));
+  set_output_from_base_and_correction(s_hover_permille, correction_permille);
   if (base_throttle_permille != 0)
   {
     *base_throttle_permille = (uint16_t)s_base_permille;

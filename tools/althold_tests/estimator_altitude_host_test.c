@@ -44,7 +44,7 @@ static void prime_baseline(void)
   assert(filtered.healthy);
 }
 
-static void test_imu_prediction_moves_fused_altitude_between_baro_samples(void)
+static void test_toy_profile_keeps_imu_vertical_prediction_disabled(void)
 {
   imu_sample_t imu = {0};
   attitude_t attitude = {0};
@@ -64,8 +64,9 @@ static void test_imu_prediction_moves_fused_altitude_between_baro_samples(void)
 
   baro_sample_t baro = make_baro(101325, 450U);
   EstimatorAltitude_Update(&baro, &filtered);
-  assert(filtered.velocity_cms > 15);
-  assert(filtered.altitude_cm > 3);
+  assert(BOARD_ALT_IMU_PREDICT_ENABLE == 0U);
+  assert(abs(filtered.velocity_cms) <= 2);
+  assert(abs(filtered.altitude_cm) <= 2);
   s_stub_armed = false;
 }
 
@@ -90,7 +91,7 @@ static void test_disarmed_pressure_warmup_does_not_walk_relative_altitude(void)
 
 int main(void)
 {
-  test_imu_prediction_moves_fused_altitude_between_baro_samples();
+  test_toy_profile_keeps_imu_vertical_prediction_disabled();
   test_disarmed_pressure_warmup_does_not_walk_relative_altitude();
   puts("estimator_altitude_host_test: PASS");
   return 0;

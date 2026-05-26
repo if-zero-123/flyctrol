@@ -202,17 +202,94 @@ static void test_midstick_runs_cascaded_hold_correction(void)
   controller_altitude_debug_t debug = enter_alt_hold(&timestamp_ms, &base, &output);
 
   timestamp_ms += 25U;
-  debug = update(BOARD_ALT_STICK_CENTER_PERMILLE, 20, 0, true, 0U, &feedback, timestamp_ms, &base, &output);
+  debug = update(BOARD_ALT_STICK_CENTER_PERMILLE,
+                 debug.hold_altitude_cm - (BOARD_ALT_HOLD_DB_CM - 1),
+                 0,
+                 true,
+                 0U,
+                 &feedback,
+                 timestamp_ms,
+                 &base,
+                 &output);
   assert(debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD);
   assert(debug.target_velocity_cms == 0);
 
   timestamp_ms += 25U;
-  debug = update(BOARD_ALT_STICK_CENTER_PERMILLE, -80, 0, true, 0U, &feedback, timestamp_ms, &base, &output);
+  debug = update(BOARD_ALT_STICK_CENTER_PERMILLE,
+                 debug.hold_altitude_cm - 120,
+                 0,
+                 true,
+                 0U,
+                 &feedback,
+                 timestamp_ms,
+                 &base,
+                 &output);
 
   assert(debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD);
   assert(debug.target_velocity_cms > 0);
   assert(abs_i16_local(debug.correction_permille) <= (int16_t)BOARD_ALT_OUTPUT_LIMIT_PERMILLE);
   assert(debug.output_permille <= (int16_t)(debug.base_permille + BOARD_ALT_OUTPUT_LIMIT_PERMILLE));
+}
+
+static void test_midstick_small_altitude_error_stays_inside_deadband(void)
+{
+  int16_t output = -1;
+  uint16_t base = 0U;
+  uint32_t timestamp_ms = 100U;
+  mixer_feedback_t feedback = make_feedback();
+  controller_altitude_debug_t debug = enter_alt_hold(&timestamp_ms, &base, &output);
+
+  timestamp_ms += 25U;
+  debug = update(BOARD_ALT_STICK_CENTER_PERMILLE,
+                 debug.hold_altitude_cm + 19,
+                 0,
+                 true,
+                 0U,
+                 &feedback,
+                 timestamp_ms,
+                 &base,
+                 &output);
+
+  assert(debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD);
+  assert(debug.target_velocity_cms == 0);
+  assert(debug.correction_permille == 0);
+  assert(BOARD_ALT_HOLD_DB_CM == 20);
+}
+
+static void test_altitude_correction_is_slew_limited(void)
+{
+  int16_t output = -1;
+  uint16_t base = 0U;
+  uint32_t timestamp_ms = 100U;
+  mixer_feedback_t feedback = make_feedback();
+  controller_altitude_debug_t debug = enter_alt_hold(&timestamp_ms, &base, &output);
+
+  timestamp_ms += 25U;
+  debug = update(BOARD_ALT_STICK_CENTER_PERMILLE,
+                 debug.hold_altitude_cm - 200,
+                 -120,
+                 true,
+                 0U,
+                 &feedback,
+                 timestamp_ms,
+                 &base,
+                 &output);
+  assert(debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD);
+  assert(debug.correction_permille <= (int16_t)BOARD_ALT_CORR_SLEW_UP_PER_SAMPLE);
+
+  int16_t previous = debug.correction_permille;
+  timestamp_ms += 25U;
+  debug = update(0U,
+                 debug.hold_altitude_cm + 80,
+                 120,
+                 true,
+                 0U,
+                 &feedback,
+                 timestamp_ms,
+                 &base,
+                 &output);
+
+  assert(previous - debug.correction_permille <= (int16_t)BOARD_ALT_CORR_SLEW_DOWN_PER_SAMPLE);
 }
 
 static void test_low_stick_has_enough_negative_authority_to_pull_down(void)
@@ -238,12 +315,15 @@ static void test_low_stick_has_enough_negative_authority_to_pull_down(void)
   assert(debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD);
   assert(debug.hover_permille > (int16_t)(BOARD_ALT_BASE_MIN_PERMILLE + 120U));
 
-  timestamp_ms += 25U;
-  debug = update(0U, 25, 0, true, 0U, &feedback, timestamp_ms, &base, &output);
+  for (uint8_t i = 0U; i < 40U; i++)
+  {
+    timestamp_ms += 25U;
+    debug = update(0U, 25, 0, true, 0U, &feedback, timestamp_ms, &base, &output);
+  }
 
   assert(debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD);
   assert(debug.target_velocity_cms <= (int16_t)(-BOARD_ALT_STICK_DESCEND_MAX_CMS + 2));
-  assert(output <= -80);
+  assert(output <= -30);
   assert(debug.output_permille < debug.hover_permille);
 }
 
@@ -353,6 +433,8 @@ int main(void)
   test_takeoff_spools_base_without_negative_baro_boost();
   test_slightly_above_center_does_not_force_hover_throttle();
   test_midstick_runs_cascaded_hold_correction();
+  test_midstick_small_altitude_error_stays_inside_deadband();
+  test_altitude_correction_is_slew_limited();
   test_low_stick_has_enough_negative_authority_to_pull_down();
   test_ready_loss_freezes_without_reset();
   test_stick_maps_to_velocity_and_velocity_pi_not_absolute_throttle();
