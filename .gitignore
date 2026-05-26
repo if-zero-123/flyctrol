@@ -10,6 +10,7 @@
 /obj
 /out
 /external
+/tools/althold_tests/bin/
 
 # python cache
 __pycache__/

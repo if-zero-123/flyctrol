@@ -29,10 +29,20 @@ typedef struct {
   uint32_t motor_sample_count;
   uint16_t motor_sat_high_count;
   uint16_t motor_sat_low_count;
+  uint32_t signed_sample_count;
+  int32_t avg_roll_cd;
+  int32_t avg_pitch_cd;
+  int32_t avg_sp_roll_cd;
+  int32_t avg_sp_pitch_cd;
+  int32_t avg_rc_roll;
+  int32_t avg_rc_pitch;
+  int32_t avg_out_r_milli;
+  int32_t avg_out_p_milli;
   bool althold_seen;
   int32_t min_baro_alt_cm;
   int32_t max_baro_alt_cm;
   int16_t max_abs_baro_vel_cms;
+  int16_t max_abs_gyro_dps;
   int16_t max_abs_alt_out_permille;
   int16_t max_abs_roll_cd;
   int16_t max_abs_pitch_cd;
@@ -75,6 +85,15 @@ static void begin_flight(uint32_t now)
   s_summary.max_baro_alt_cm = -2147483647L;
 }
 
+static void update_avg(int32_t *avg, int32_t sample, uint32_t count)
+{
+  if ((avg == 0) || (count == 0U))
+  {
+    return;
+  }
+  *avg += (sample - *avg) / (int32_t)count;
+}
+
 void FlightMonitor_Init(void)
 {
   taskENTER_CRITICAL();
@@ -93,6 +112,8 @@ void FlightMonitor_Update(const flight_status_t *status)
   battery_status_t batt = Topic_GetBattery();
   attitude_t att = Topic_GetAttitude();
   baro_sample_t baro = Topic_GetBaro();
+  imu_sample_t imu = Topic_GetImu();
+  app_rc_t rc = Topic_GetRc();
   uint32_t now = status->uptime_ms;
 
   taskENTER_CRITICAL();
@@ -112,10 +133,19 @@ void FlightMonitor_Update(const flight_status_t *status)
       if (m > max_motor) { max_motor = m; }
     }
 
-    int16_t roll_cd = abs_i16(clamp_i16((int32_t)(att.roll_deg * 100.0f)));
-    int16_t pitch_cd = abs_i16(clamp_i16((int32_t)(att.pitch_deg * 100.0f)));
-    int16_t out_r = abs_i16(clamp_i16((int32_t)(status->control.roll * 1000.0f)));
-    int16_t out_p = abs_i16(clamp_i16((int32_t)(status->control.pitch * 1000.0f)));
+    int16_t roll_cd_signed = clamp_i16((int32_t)(att.roll_deg * 100.0f));
+    int16_t pitch_cd_signed = clamp_i16((int32_t)(att.pitch_deg * 100.0f));
+    int16_t sp_roll_cd = clamp_i16((int32_t)(status->setpoint.roll_deg * 100.0f));
+    int16_t sp_pitch_cd = clamp_i16((int32_t)(status->setpoint.pitch_deg * 100.0f));
+    int16_t out_r_signed = clamp_i16((int32_t)(status->control.roll * 1000.0f));
+    int16_t out_p_signed = clamp_i16((int32_t)(status->control.pitch * 1000.0f));
+    int16_t gyro_r = abs_i16(clamp_i16((int32_t)imu.gyro_dps[0]));
+    int16_t gyro_p = abs_i16(clamp_i16((int32_t)imu.gyro_dps[1]));
+    int16_t gyro_max = (gyro_r > gyro_p) ? gyro_r : gyro_p;
+    int16_t roll_cd = abs_i16(roll_cd_signed);
+    int16_t pitch_cd = abs_i16(pitch_cd_signed);
+    int16_t out_r = abs_i16(out_r_signed);
+    int16_t out_p = abs_i16(out_p_signed);
     int16_t out_y = abs_i16(clamp_i16((int32_t)(status->control.yaw * 1000.0f)));
     int16_t alt_out = abs_i16(status->control.altitude_permille);
     int16_t baro_vel = abs_i16(baro.velocity_cms);
@@ -143,6 +173,15 @@ void FlightMonitor_Update(const flight_status_t *status)
     }
     s_summary.motor_sum_permille += avg_motor;
     s_summary.motor_sample_count++;
+    s_summary.signed_sample_count++;
+    update_avg(&s_summary.avg_roll_cd, roll_cd_signed, s_summary.signed_sample_count);
+    update_avg(&s_summary.avg_pitch_cd, pitch_cd_signed, s_summary.signed_sample_count);
+    update_avg(&s_summary.avg_sp_roll_cd, sp_roll_cd, s_summary.signed_sample_count);
+    update_avg(&s_summary.avg_sp_pitch_cd, sp_pitch_cd, s_summary.signed_sample_count);
+    update_avg(&s_summary.avg_rc_roll, rc.roll, s_summary.signed_sample_count);
+    update_avg(&s_summary.avg_rc_pitch, rc.pitch, s_summary.signed_sample_count);
+    update_avg(&s_summary.avg_out_r_milli, out_r_signed, s_summary.signed_sample_count);
+    update_avg(&s_summary.avg_out_p_milli, out_p_signed, s_summary.signed_sample_count);
     if (max_motor >= (uint16_t)(status->motor_max_permille - 5U))
     {
       if (s_summary.motor_sat_high_count < 65535U)
@@ -168,6 +207,7 @@ void FlightMonitor_Update(const flight_status_t *status)
       if (baro_vel > s_summary.max_abs_baro_vel_cms) { s_summary.max_abs_baro_vel_cms = baro_vel; }
     }
     if (alt_out > s_summary.max_abs_alt_out_permille) { s_summary.max_abs_alt_out_permille = alt_out; }
+    if (gyro_max > s_summary.max_abs_gyro_dps) { s_summary.max_abs_gyro_dps = gyro_max; }
     if (roll_cd > s_summary.max_abs_roll_cd) { s_summary.max_abs_roll_cd = roll_cd; }
     if (pitch_cd > s_summary.max_abs_pitch_cd) { s_summary.max_abs_pitch_cd = pitch_cd; }
     if (out_r > s_summary.max_out_r_milli) { s_summary.max_out_r_milli = out_r; }
@@ -222,6 +262,18 @@ void FlightMonitor_Print(void)
                    s.max_out_r_milli,
                    s.max_out_p_milli,
                    s.max_out_y_milli);
+  DebugUart_Printf("flight avg_cd att=%ld,%ld sp=%ld,%ld rc=%ld,%ld out=%ld,%ld gyro=%d trim=%ld,%ld\r\n",
+                   (long)s.avg_roll_cd,
+                   (long)s.avg_pitch_cd,
+                   (long)s.avg_sp_roll_cd,
+                   (long)s.avg_sp_pitch_cd,
+                   (long)s.avg_rc_roll,
+                   (long)s.avg_rc_pitch,
+                   (long)s.avg_out_r_milli,
+                   (long)s.avg_out_p_milli,
+                   s.max_abs_gyro_dps,
+                   (long)(s.avg_roll_cd - s.avg_sp_roll_cd),
+                   (long)(s.avg_pitch_cd - s.avg_sp_pitch_cd));
   DebugUart_Printf("flight althold=%u alt_min=%ldcm alt_max=%ldcm max_vel=%dcm/s max_alt_out=%d\r\n",
                    s.althold_seen ? 1U : 0U,
                    (long)((s.min_baro_alt_cm == 2147483647L) ? 0 : s.min_baro_alt_cm),

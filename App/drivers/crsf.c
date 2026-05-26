@@ -11,6 +11,7 @@
 #include "board_config.h"
 #include "flight_types.h"
 #include "main.h"
+#include "rc_calibration.h"
 #include "topic.h"
 
 #define CRSF_DMA_BUFFER_SIZE 256U
@@ -52,38 +53,6 @@ static bool valid_address(uint8_t address)
   return (address == CRSF_ADDRESS_FC) || (address == CRSF_ADDRESS_RADIO) || (address == 0xECU) || (address == 0xEEU);
 }
 
-static int16_t normalize_stick(uint16_t raw)
-{
-  int32_t v = ((int32_t)raw - 992) * 1000 / 820;
-  if ((v > -BOARD_RC_DEADBAND) && (v < BOARD_RC_DEADBAND))
-  {
-    v = 0;
-  }
-  if (v < -1000)
-  {
-    v = -1000;
-  }
-  if (v > 1000)
-  {
-    v = 1000;
-  }
-  return (int16_t)v;
-}
-
-static uint16_t normalize_throttle(uint16_t raw)
-{
-  int32_t v = ((int32_t)raw - 172) * 1000 / (1811 - 172);
-  if (v < 0)
-  {
-    v = 0;
-  }
-  if (v > 1000)
-  {
-    v = 1000;
-  }
-  return (uint16_t)v;
-}
-
 static void unpack_channels(const uint8_t *p, uint16_t ch[16])
 {
   ch[0] = ((uint16_t)p[0] | ((uint16_t)p[1] << 8)) & 0x07FFU;
@@ -111,10 +80,10 @@ static void publish_rc(const uint16_t raw[16])
   {
     rc.ch[i] = (int16_t)raw[i];
   }
-  rc.roll = normalize_stick(raw[0]);
-  rc.pitch = normalize_stick(raw[1]);
-  rc.throttle = normalize_throttle(raw[2]);
-  rc.yaw = normalize_stick(raw[3]);
+  rc.roll = RcCalibration_NormalizeStick(RC_CAL_AXIS_ROLL, raw[0]);
+  rc.pitch = RcCalibration_NormalizeStick(RC_CAL_AXIS_PITCH, raw[1]);
+  rc.throttle = RcCalibration_NormalizeThrottle(raw[2]);
+  rc.yaw = RcCalibration_NormalizeStick(RC_CAL_AXIS_YAW, raw[3]);
   rc.arm_switch = raw[4] > 1500U;
   rc.angle_mode = true;
   rc.baro_mode = raw[5] > 1500U;

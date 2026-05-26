@@ -3,6 +3,7 @@
 
 #include "flight_types.h"
 
+void Commander_Reset(void);
 void Commander_BuildSetpoint(const app_rc_t *rc, control_setpoint_t *out);
 
 #endif /* APP_COMMANDER_H */

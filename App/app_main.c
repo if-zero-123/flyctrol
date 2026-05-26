@@ -3,6 +3,7 @@
 #include "app_tasks.h"
 #include "battery_adc.h"
 #include "bmp280.h"
+#include "commander.h"
 #include "controller_altitude.h"
 #include "controller_attitude.h"
 #include "crsf.h"
@@ -43,6 +44,7 @@ void App_Start(void)
   AppBootStage_Set(43U);
   EstimatorAttitude_Init();
   EstimatorAltitude_Init();
+  Commander_Reset();
   ControllerAttitude_Init();
   ControllerAltitude_Init();
   Safety_Init();

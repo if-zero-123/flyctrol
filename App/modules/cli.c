@@ -24,6 +24,7 @@
 #include "mixer_quad.h"
 #include "motor_pwm.h"
 #include "mpu6050.h"
+#include "rc_calibration.h"
 #include "safety.h"
 #include "telemetry.h"
 #include "topic.h"
@@ -73,7 +74,7 @@ static int32_t s_baro_cli_prev_pa;
 
 static void print_help(void)
 {
-  DebugUart_WriteLine("cmd: help status clock heap i2cscan imu baro [zero] rc rcmap batt battdiag");
+  DebugUart_WriteLine("cmd: help status clock heap i2cscan imu baro [zero] rc rcmap rccenter batt battdiag");
   DebugUart_WriteLine("cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]");
   DebugUart_WriteLine("cmd: flight shows last armed-flight summary");
   DebugUart_WriteLine("cmd: flight core: airmode=on crash_protect=on brushed_pwm=timer duty");
@@ -209,12 +210,16 @@ static void print_status(void)
                    onoff(BOARD_CRASH_GYRO_ENABLE),
                    (long)BOARD_CRASH_GYRO_DPS,
                    BOARD_CRASH_HOLD_MS);
-  DebugUart_Printf("control_profile angle=%lddeg level_gain=%ld/10 max_rate=%lddps yaw_rate=%lddps expo=%u%%\r\n",
+  DebugUart_Printf("control_profile angle=%ld/%lddeg level_gain=%ld/10 max_rate=%lddps yaw_rate=%lddps expo=%u/%u%% db=%d slew_cd=%ld\r\n",
                    (long)BOARD_MAX_ANGLE_DEG,
+                   (long)BOARD_BARO_MAX_ANGLE_DEG,
                    (long)(BOARD_LEVEL_GAIN_DPS_PER_DEG * 10.0f),
                    (long)BOARD_MAX_LEVEL_RATE_DPS,
                    (long)BOARD_MAX_YAW_RATE_DPS,
-                   BOARD_RC_EXPO_PERCENT);
+                   BOARD_RC_EXPO_PERCENT,
+                   BOARD_BARO_RC_EXPO_PERCENT,
+                   BOARD_BARO_RC_DEADBAND,
+                   (long)(BOARD_BARO_SETPOINT_SLEW_DEG_PER_SAMPLE * 100.0f));
 }
 
 static void print_heap(void)
@@ -363,11 +368,42 @@ static void print_rc(void)
                    rc.ch[13],
                    rc.ch[14],
                    rc.ch[15]);
+  DebugUart_Printf("rccenter roll=%u pitch=%u yaw=%u\r\n",
+                   RcCalibration_GetCenter(RC_CAL_AXIS_ROLL),
+                   RcCalibration_GetCenter(RC_CAL_AXIS_PITCH),
+                   RcCalibration_GetCenter(RC_CAL_AXIS_YAW));
 }
 
 static void print_rcmap(void)
 {
-  DebugUart_WriteLine("rcmap order=AETR roll=CH1 pitch=CH2 throttle=CH3 yaw=CH4 arm=CH5 baro=CH6 raw_min=172 raw_mid=992 raw_max=1811");
+  DebugUart_Printf("rcmap order=AETR roll=CH1 pitch=CH2 throttle=CH3 yaw=CH4 arm=CH5 baro=CH6 raw_min=%u raw_mid=%u raw_max=%u center=%u,%u,%u\r\n",
+                   BOARD_CRSF_RAW_MIN,
+                   BOARD_CRSF_RAW_MID,
+                   BOARD_CRSF_RAW_MAX,
+                   RcCalibration_GetCenter(RC_CAL_AXIS_ROLL),
+                   RcCalibration_GetCenter(RC_CAL_AXIS_PITCH),
+                   RcCalibration_GetCenter(RC_CAL_AXIS_YAW));
+}
+
+static void cmd_rccenter(void)
+{
+  app_rc_t rc = Topic_GetRc();
+  flight_status_t st = Topic_GetStatus();
+  if (st.armed)
+  {
+    DebugUart_WriteLine("rccenter denied: disarm first");
+    return;
+  }
+  if (!rc.connected || rc.failsafe)
+  {
+    DebugUart_WriteLine("rccenter denied: rc not ready");
+    return;
+  }
+  RcCalibration_SetCenter((uint16_t)rc.ch[0], (uint16_t)rc.ch[1], (uint16_t)rc.ch[3]);
+  DebugUart_Printf("rccenter ok roll=%u pitch=%u yaw=%u\r\n",
+                   RcCalibration_GetCenter(RC_CAL_AXIS_ROLL),
+                   RcCalibration_GetCenter(RC_CAL_AXIS_PITCH),
+                   RcCalibration_GetCenter(RC_CAL_AXIS_YAW));
 }
 
 static void print_batt(void)
@@ -857,6 +893,10 @@ static void execute_line(char *line)
   else if (strcmp(cmd, "rcmap") == 0)
   {
     print_rcmap();
+  }
+  else if ((strcmp(cmd, "rccenter") == 0) || (strcmp(cmd, "rczero") == 0))
+  {
+    cmd_rccenter();
   }
   else if (strcmp(cmd, "batt") == 0)
   {
