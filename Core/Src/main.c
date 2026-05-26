@@ -341,11 +341,9 @@ int main(void)
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
-  /* Create the thread(s) */
-  /* definition and creation of defaultTask */
+  /* Create the real application tasks before starting the scheduler. */
   s_boot_stage = 11U;
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 256);
-  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+  App_Start();
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -354,6 +352,8 @@ int main(void)
   /* Start scheduler */
   s_boot_stage = 12U;
   osKernelStart();
+  s_boot_stage = 13U;
+  Error_Handler();
 
   /* We should never get here as control is now taken by the scheduler */
 
