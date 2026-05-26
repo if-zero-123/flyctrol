@@ -126,6 +126,20 @@ void MixerQuad_ResetThrottleRamp(void)
   s_throttle_ramp_ready = false;
 }
 
+void MixerQuad_PrimeThrottleRamp(uint16_t permille)
+{
+  if (permille < s_motor_idle_permille)
+  {
+    permille = s_motor_idle_permille;
+  }
+  if (permille > s_motor_max_permille)
+  {
+    permille = s_motor_max_permille;
+  }
+  s_throttle_ramped_permille = permille;
+  s_throttle_ramp_ready = true;
+}
+
 static uint16_t slew_throttle(uint16_t throttle_permille)
 {
   if (!s_throttle_ramp_ready)

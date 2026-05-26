@@ -21,6 +21,7 @@
 #include "motor_pwm.h"
 #include "mpu6050.h"
 #include "safety.h"
+#include "telemetry.h"
 #include "topic.h"
 
 static int32_t deg_to_cdeg(float deg)
@@ -69,7 +70,7 @@ static void print_help(void)
   DebugUart_WriteLine("cmd: flight core: airmode=on crash_protect=on brushed_pwm=timer duty");
   DebugUart_WriteLine("cmd: motoridle [0-200], motormax [700-1000], motor unlock|stop|<1-4> <permille>");
   DebugUart_WriteLine("cmd: pid [roll|pitch|yaw <P> <I> <D>|safe|bf] uses BF-style units");
-  DebugUart_WriteLine("cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm reboot");
+  DebugUart_WriteLine("cmd: trim [roll_cdeg pitch_cdeg], leveltrim, gyrocal acccal imucal arm disarm log on|off reboot");
 }
 
 static const char *sysclk_source_name(void)
@@ -158,19 +159,20 @@ static void print_status(void)
                    st.last_disarm_flags,
                    st.motor_idle_permille,
                    st.motor_max_permille);
-  DebugUart_Printf("arm_block=0x%04X rule: arm=CH5 high stable>%ums, throttle<=%u, rc=1, imu=1, level<75deg, batt>%umV\r\n",
+  DebugUart_Printf("arm_block=0x%04X rule: arm=CH5 stable>%ums, thr<=%u or baro mid=%u+-%u, rc=1, imu=1, level<75deg, batt>%umV\r\n",
                    st.arm_block_flags,
                    BOARD_ARM_SWITCH_DEBOUNCE_MS,
                    BOARD_ARM_THROTTLE_MAX,
+                   BOARD_THROTTLE_HOVER_PERMILLE,
+                   BOARD_ALT_ARM_CENTER_TOLERANCE,
                    BOARD_BATT_CRITICAL_MV);
-  DebugUart_Printf("flight_core airmode=%s start_thr=%u crash_disarm=%u crash_angle=%lddeg crash_gyro=%lddps hold=%ums arm_lost_hold=%ums\r\n",
+  DebugUart_Printf("flight_core airmode=%s start_thr=%u crash_angle=%lddeg crash_gyro=%s/%lddps hold=%ums\r\n",
                    onoff(BOARD_AIRMODE_ENABLE),
                    BOARD_AIRMODE_START_THROTTLE,
-                   BOARD_CRASH_DISARM_ENABLE,
                    (long)BOARD_CRASH_ANGLE_DEG,
+                   onoff(BOARD_CRASH_GYRO_ENABLE),
                    (long)BOARD_CRASH_GYRO_DPS,
-                   BOARD_CRASH_HOLD_MS,
-                   BOARD_INFLIGHT_ARM_LOST_HOLD_MS);
+                   BOARD_CRASH_HOLD_MS);
   DebugUart_Printf("control_profile angle=%lddeg level_gain=%ld/10 max_rate=%lddps yaw_rate=%lddps expo=%u%%\r\n",
                    (long)BOARD_MAX_ANGLE_DEG,
                    (long)(BOARD_LEVEL_GAIN_DPS_PER_DEG * 10.0f),
@@ -876,6 +878,12 @@ static void execute_line(char *line)
     Safety_RequestDisarm();
     DebugUart_WriteLine("disarmed");
   }
+  else if (strcmp(cmd, "log") == 0)
+  {
+    bool on = (a1 != NULL) && (strcmp(a1, "on") == 0);
+    App_SetTelemetryLog(on);
+    DebugUart_Printf("log=%u\r\n", on ? 1U : 0U);
+  }
   else if (strcmp(cmd, "reboot") == 0)
   {
     DebugUart_WriteLine("rebooting");
@@ -894,12 +902,19 @@ void Cli_TaskLoop(void)
   uint8_t pos = 0U;
   uint8_t ch;
   bool skip_lf = false;
+  TickType_t last_log = xTaskGetTickCount();
 
   DebugUart_Write("> ");
   for (;;)
   {
     if (!DebugUart_ReadByte(&ch, 20U))
     {
+      TickType_t now = xTaskGetTickCount();
+      if ((now - last_log) >= pdMS_TO_TICKS(200U))
+      {
+        last_log = now;
+        Telemetry_PrintOnce();
+      }
       continue;
     }
 

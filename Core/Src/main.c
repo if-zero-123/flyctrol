@@ -212,32 +212,6 @@ static void EarlyLed_ErrorCode(uint32_t code)
   }
 }
 
-static void EarlyLed_TaskStartFlash(void)
-{
-  for (uint32_t i = 0U; i < 2U; i++)
-  {
-    EarlyLed_Set(GPIO_PIN_3, 1U);
-    EarlyLed_Set(GPIO_PIN_4, 1U);
-    EarlyDelay(500000U);
-    EarlyLed_Set(GPIO_PIN_3, 0U);
-    EarlyLed_Set(GPIO_PIN_4, 0U);
-    EarlyDelay(500000U);
-  }
-}
-
-static uint32_t HalTick_IsRunning(void)
-{
-  uint32_t start = HAL_GetTick();
-  for (uint32_t i = 0U; i < 2000000U; i++)
-  {
-    if (HAL_GetTick() != start)
-    {
-      return 1U;
-    }
-  }
-  return 0U;
-}
-
 static uint32_t StackOverflowStageFromName(const char *name)
 {
   if (name == NULL)
@@ -336,11 +310,6 @@ int main(void)
     const uint8_t early_msg[] = "HAL USART1 OK 115200\r\n";
     (void)HAL_UART_Transmit(&huart1, (uint8_t *)early_msg, sizeof(early_msg) - 1U, 200U);
   }
-  if (HalTick_IsRunning() == 0U)
-  {
-    s_boot_stage = 14U;
-    Error_Handler();
-  }
 
   /* USER CODE END 2 */
   s_boot_stage = 5U;
@@ -372,10 +341,11 @@ int main(void)
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
-  /* Create application tasks before starting the scheduler.
-     Heavy board/sensor init runs on MSP instead of a temporary RTOS task stack. */
+  /* Create the thread(s) */
+  /* definition and creation of defaultTask */
   s_boot_stage = 11U;
-  App_Start();
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 512);
+  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -384,8 +354,6 @@ int main(void)
   /* Start scheduler */
   s_boot_stage = 12U;
   osKernelStart();
-  s_boot_stage = 13U;
-  Error_Handler();
 
   /* We should never get here as control is now taken by the scheduler */
 
@@ -811,12 +779,6 @@ static void MX_GPIO_Init(void)
 void AppBootStage_Set(uint32_t stage)
 {
   s_boot_stage = stage;
-}
-
-void AppBootStage_TaskStarted(void)
-{
-  EarlyLed_InitBare();
-  EarlyLed_TaskStartFlash();
 }
 
 uint32_t AppClock_IsHsiFallback(void)

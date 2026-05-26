@@ -223,9 +223,6 @@ void Crsf_UpdateLinkState(void)
   {
     rc.connected = false;
     rc.failsafe = true;
-    rc.throttle = 0U;
-    rc.arm_switch = false;
-    rc.last_update_ms = now;
     Topic_PublishRc(&rc);
   }
 }

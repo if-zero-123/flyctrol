@@ -9,10 +9,9 @@
 #include "task.h"
 #include "main.h"
 
-#define DEBUG_UART_RX_BUF_SIZE 128U
+#define DEBUG_UART_RX_BUF_SIZE 256U
 
 static SemaphoreHandle_t s_tx_mutex;
-static char s_printf_buf[192];
 static uint8_t s_rx_irq_byte;
 static volatile uint8_t s_rx_buf[DEBUG_UART_RX_BUF_SIZE];
 static volatile uint16_t s_rx_head;
@@ -46,20 +45,15 @@ void DebugUart_Write(const char *text)
     return;
   }
 
-  bool use_lock = (s_tx_mutex != NULL) && (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED);
-  bool locked = false;
-  if (use_lock)
+  bool lock = (s_tx_mutex != NULL) && (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED);
+  if (lock)
   {
-    locked = xSemaphoreTake(s_tx_mutex, pdMS_TO_TICKS(100)) == pdTRUE;
-    if (!locked)
-    {
-      return;
-    }
+    (void)xSemaphoreTake(s_tx_mutex, pdMS_TO_TICKS(100));
   }
 
   (void)HAL_UART_Transmit(&huart1, (uint8_t *)text, (uint16_t)len, 200U);
 
-  if (locked)
+  if (lock)
   {
     (void)xSemaphoreGive(s_tx_mutex);
   }
@@ -73,35 +67,18 @@ void DebugUart_WriteLine(const char *text)
 
 void DebugUart_Printf(const char *fmt, ...)
 {
-  bool use_lock = (s_tx_mutex != NULL) && (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED);
-  bool locked = false;
-  if (use_lock)
-  {
-    locked = xSemaphoreTake(s_tx_mutex, pdMS_TO_TICKS(100)) == pdTRUE;
-    if (!locked)
-    {
-      return;
-    }
-  }
-
+  char buf[192];
   va_list args;
   va_start(args, fmt);
-  int n = vsnprintf(s_printf_buf, sizeof(s_printf_buf), fmt, args);
+  int n = vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
 
-  if (n > 0)
+  if (n <= 0)
   {
-    s_printf_buf[sizeof(s_printf_buf) - 1U] = '\0';
-    (void)HAL_UART_Transmit(&huart1,
-                            (uint8_t *)s_printf_buf,
-                            (uint16_t)strlen(s_printf_buf),
-                            200U);
+    return;
   }
-
-  if (locked)
-  {
-    (void)xSemaphoreGive(s_tx_mutex);
-  }
+  buf[sizeof(buf) - 1U] = '\0';
+  DebugUart_Write(buf);
 }
 
 bool DebugUart_ReadByte(uint8_t *byte, uint32_t timeout_ms)

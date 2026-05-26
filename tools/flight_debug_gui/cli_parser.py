@@ -40,7 +40,6 @@ class FlightCliParser:
             "clock": {},
             "pid": {},
             "motors": {},
-            "flight": {},
             "last_line": "",
             "last_update": "",
         }
@@ -133,9 +132,6 @@ class FlightCliParser:
         if text.startswith("control alt "):
             self._parse_control_alt(text)
             self._add_snapshot()
-            return
-        if text.startswith("flight "):
-            self._parse_flight(text)
             return
         if text.startswith("mot "):
             self._parse_motors(text)
@@ -454,69 +450,6 @@ class FlightCliParser:
         m = re.search(r"mot (-?\d+) (-?\d+) (-?\d+) (-?\d+)", text)
         if m:
             self.state["motors"] = {"m": [int(m.group(i)) for i in range(1, 5)]}
-
-    def _parse_flight(self, text: str) -> None:
-        flight = self._dict("flight")
-        m = re.search(r"flight active=(\d+) duration=(\d+)ms stop_flags=0x([0-9A-Fa-f]+) last_disarm=0x([0-9A-Fa-f]+)", text)
-        if m:
-            flight.update(
-                {
-                    "active": bool(int(m.group(1))),
-                    "duration_ms": int(m.group(2)),
-                    "stop_flags": int(m.group(3), 16),
-                    "last_disarm": int(m.group(4), 16),
-                }
-            )
-            self.state["flight"] = flight
-            return
-        m = re.search(r"flight stop_reason=([A-Za-z0-9_]+)", text)
-        if m:
-            flight["stop_reason"] = m.group(1)
-            self.state["flight"] = flight
-            return
-        m = re.search(r"flight min_batt=(\d+)mV max_thr=(\d+) max_motor=(\d+) spread=(\d+)", text)
-        if m:
-            flight.update(
-                {
-                    "min_batt_mv": int(m.group(1)),
-                    "max_throttle": int(m.group(2)),
-                    "max_motor": int(m.group(3)),
-                    "motor_spread": int(m.group(4)),
-                }
-            )
-            self.state["flight"] = flight
-            return
-        m = re.search(r"flight althold=(\d+) alt_min=(-?\d+)cm alt_max=(-?\d+)cm max_vel=(\d+)cm/s max_alt_out=(\d+)", text)
-        if m:
-            flight.update(
-                {
-                    "althold": bool(int(m.group(1))),
-                    "alt_min_cm": int(m.group(2)),
-                    "alt_max_cm": int(m.group(3)),
-                    "max_vel_cms": int(m.group(4)),
-                    "max_alt_out": int(m.group(5)),
-                }
-            )
-            self.state["flight"] = flight
-            return
-        m = re.search(
-            r"flight health max_age rc=(\d+)ms imu=(\d+)ms baro=(\d+)ms "
-            r"stop_age rc=(\d+)ms imu=(\d+)ms baro=(\d+)ms min_heap=(\d+)",
-            text,
-        )
-        if m:
-            flight.update(
-                {
-                    "max_rc_age_ms": int(m.group(1)),
-                    "max_imu_age_ms": int(m.group(2)),
-                    "max_baro_age_ms": int(m.group(3)),
-                    "stop_rc_age_ms": int(m.group(4)),
-                    "stop_imu_age_ms": int(m.group(5)),
-                    "stop_baro_age_ms": int(m.group(6)),
-                    "min_heap": int(m.group(7)),
-                }
-            )
-            self.state["flight"] = flight
 
     def _add_snapshot(self) -> None:
         status = self._dict("status")

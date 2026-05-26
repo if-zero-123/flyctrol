@@ -13,16 +13,32 @@ static bool s_arm_seen_low;
 static bool s_arm_raw_prev;
 static bool s_arm_request_stable;
 static uint32_t s_arm_change_ms;
-static uint32_t s_arm_lost_since_ms;
 static uint32_t s_motor_test_until_ms;
 static uint32_t s_battery_critical_since_ms;
 static uint32_t s_crash_since_ms;
+static uint32_t s_rc_lost_since_ms;
+static uint32_t s_imu_lost_since_ms;
+static uint32_t s_arm_lost_since_ms;
 static bool s_motor_test_bench;
 static bool s_crash_latched;
 
 static float absf_local(float v)
 {
   return (v < 0.0f) ? -v : v;
+}
+
+static bool hold_elapsed(bool active, uint32_t now, uint32_t hold_ms, uint32_t *since_ms)
+{
+  if (!active)
+  {
+    *since_ms = 0U;
+    return false;
+  }
+  if (*since_ms == 0U)
+  {
+    *since_ms = now;
+  }
+  return (now - *since_ms) >= hold_ms;
 }
 
 void Safety_Init(void)
@@ -32,10 +48,12 @@ void Safety_Init(void)
   s_arm_raw_prev = false;
   s_arm_request_stable = false;
   s_arm_change_ms = 0U;
-  s_arm_lost_since_ms = 0U;
   s_motor_test_until_ms = 0U;
   s_battery_critical_since_ms = 0U;
   s_crash_since_ms = 0U;
+  s_rc_lost_since_ms = 0U;
+  s_imu_lost_since_ms = 0U;
+  s_arm_lost_since_ms = 0U;
   s_motor_test_bench = false;
   s_crash_latched = false;
   s_status.armed = false;
@@ -53,25 +71,25 @@ void Safety_Update(void)
   uint32_t now = BoardTime_Millis();
   bool was_armed = s_status.armed;
 
-  bool rc_recent = rc.connected && ((now - rc.last_update_ms) <= BOARD_RC_TIMEOUT_MS) && !rc.failsafe;
-  bool attitude_recent = att.healthy && (att.timestamp_ms != 0U) &&
-                         ((now - att.timestamp_ms) <= BOARD_IMU_FAILSAFE_TIMEOUT_MS);
+  bool rc_recent_raw = rc.connected && ((now - rc.last_update_ms) <= BOARD_RC_TIMEOUT_MS) && !rc.failsafe;
+  bool attitude_recent_raw = att.healthy && (att.timestamp_ms != 0U) &&
+                             ((now - att.timestamp_ms) <= BOARD_IMU_FAILSAFE_TIMEOUT_MS);
   bool baro_recent = baro.healthy && (baro.timestamp_ms != 0U) &&
                      ((now - baro.timestamp_ms) <= BOARD_BARO_TIMEOUT_MS);
-  bool arming_angle_ok = attitude_recent && (absf_local(att.roll_deg) < 75.0f) &&
+  bool arming_angle_ok = attitude_recent_raw && (absf_local(att.roll_deg) < 75.0f) &&
                          (absf_local(att.pitch_deg) < 75.0f);
   bool gyro_recent = imu.healthy && (imu.timestamp_ms != 0U) &&
                      ((now - imu.timestamp_ms) <= BOARD_IMU_FAILSAFE_TIMEOUT_MS);
-  bool crash_motion = s_status.armed && attitude_recent &&
+  bool crash_motion = s_status.armed && attitude_recent_raw &&
                       ((absf_local(att.roll_deg) > BOARD_CRASH_ANGLE_DEG) ||
                        (absf_local(att.pitch_deg) > BOARD_CRASH_ANGLE_DEG));
-  if (s_status.armed && gyro_recent)
+  if (s_status.armed && gyro_recent && (BOARD_CRASH_GYRO_ENABLE != 0U))
   {
     crash_motion = crash_motion ||
                    (absf_local(imu.gyro_dps[0]) > BOARD_CRASH_GYRO_DPS) ||
                    (absf_local(imu.gyro_dps[1]) > BOARD_CRASH_GYRO_DPS);
   }
-  if (!s_status.armed || !attitude_recent)
+  if (!s_status.armed || !attitude_recent_raw)
   {
     s_crash_since_ms = 0U;
     s_crash_latched = false;
@@ -118,20 +136,60 @@ void Safety_Update(void)
     s_arm_seen_low = true;
   }
   bool throttle_low = rc.throttle <= BOARD_ARM_THROTTLE_MAX;
+  uint16_t hover = BOARD_THROTTLE_HOVER_PERMILLE;
+  bool throttle_alt_arm_centered = rc.baro_mode && baro_recent &&
+                                   (rc.throttle >= (hover - BOARD_ALT_ARM_CENTER_TOLERANCE)) &&
+                                   (rc.throttle <= (hover + BOARD_ALT_ARM_CENTER_TOLERANCE));
+  bool throttle_arm_ok = throttle_low || throttle_alt_arm_centered;
+  bool rc_lost_stop = !rc_recent_raw;
+  bool imu_lost_stop = !attitude_recent_raw;
+  if (was_armed)
+  {
+    rc_lost_stop = hold_elapsed(!rc_recent_raw, now, BOARD_INFLIGHT_RC_LOST_HOLD_MS, &s_rc_lost_since_ms);
+    imu_lost_stop = hold_elapsed(!attitude_recent_raw, now, BOARD_INFLIGHT_IMU_LOST_HOLD_MS, &s_imu_lost_since_ms);
+  }
+  else
+  {
+    s_rc_lost_since_ms = 0U;
+    s_imu_lost_since_ms = 0U;
+  }
+  bool arm_lost_stop = !arm_request;
+  if (was_armed)
+  {
+    if (!arm_request && !throttle_low)
+    {
+      arm_lost_stop = hold_elapsed(true, now, BOARD_INFLIGHT_ARM_LOST_HOLD_MS, &s_arm_lost_since_ms);
+    }
+    else
+    {
+      s_arm_lost_since_ms = 0U;
+      arm_lost_stop = !arm_request;
+    }
+  }
+  else
+  {
+    s_arm_lost_since_ms = 0U;
+  }
   uint16_t failsafe_flags = 0U;
   uint16_t arm_block_flags = 0U;
 
-  if (!rc_recent)
+  if (rc_lost_stop)
   {
     failsafe_flags |= SAFETY_FAILSAFE_RC;
+  }
+  if (!rc_recent_raw)
+  {
     arm_block_flags |= SAFETY_ARM_BLOCK_RC;
   }
-  if (!attitude_recent)
+  if (imu_lost_stop)
   {
     failsafe_flags |= SAFETY_FAILSAFE_IMU;
+  }
+  if (!attitude_recent_raw)
+  {
     arm_block_flags |= SAFETY_ARM_BLOCK_IMU;
   }
-  if (attitude_recent && !arming_angle_ok)
+  if (attitude_recent_raw && !arming_angle_ok)
   {
     arm_block_flags |= SAFETY_ARM_BLOCK_LEVEL;
   }
@@ -139,12 +197,12 @@ void Safety_Update(void)
   {
     arm_block_flags |= SAFETY_ARM_BLOCK_BATTERY;
   }
-  if (s_crash_latched && (BOARD_CRASH_DISARM_ENABLE != 0U))
+  if (s_crash_latched)
   {
     failsafe_flags |= SAFETY_FAILSAFE_CRASH;
     arm_block_flags |= SAFETY_ARM_BLOCK_CRASH;
   }
-  if (!throttle_low)
+  if (!throttle_arm_ok)
   {
     arm_block_flags |= SAFETY_ARM_BLOCK_THROTTLE;
   }
@@ -153,8 +211,8 @@ void Safety_Update(void)
     arm_block_flags |= SAFETY_ARM_BLOCK_LATCH;
   }
 
-  s_status.rc_ok = rc_recent;
-  s_status.imu_ok = attitude_recent;
+  s_status.rc_ok = rc_recent_raw;
+  s_status.imu_ok = attitude_recent_raw;
   s_status.baro_ok = baro_recent;
   s_status.angle_mode = rc.angle_mode;
   s_status.baro_mode = rc.baro_mode && baro_recent;
@@ -172,28 +230,13 @@ void Safety_Update(void)
   }
   s_status.motor_test_unlocked = (!s_status.armed) && (now <= s_motor_test_until_ms) && (s_motor_test_bench || !s_status.failsafe);
 
-  bool inflight_stop = !rc_recent || !attitude_recent ||
-                       (s_crash_latched && (BOARD_CRASH_DISARM_ENABLE != 0U));
-  bool arm_lost_confirmed = !arm_request;
-  if (was_armed && !arm_request)
-  {
-    if (s_arm_lost_since_ms == 0U)
-    {
-      s_arm_lost_since_ms = now;
-    }
-    arm_lost_confirmed = (now - s_arm_lost_since_ms) >= BOARD_INFLIGHT_ARM_LOST_HOLD_MS;
-  }
-  else
-  {
-    s_arm_lost_since_ms = 0U;
-  }
-
-  if (arm_lost_confirmed || (was_armed && inflight_stop))
+  bool inflight_stop = rc_lost_stop || imu_lost_stop || s_crash_latched;
+  if ((!arm_request && (!was_armed || arm_lost_stop)) || (was_armed && inflight_stop))
   {
     s_status.armed = false;
     if (was_armed)
     {
-      if (s_crash_latched && (BOARD_CRASH_DISARM_ENABLE != 0U))
+      if (s_crash_latched)
       {
         s_status.last_disarm_flags = SAFETY_DISARM_CRASH;
       }
@@ -214,6 +257,9 @@ void Safety_Update(void)
     s_arm_seen_low = false;
     s_crash_since_ms = 0U;
     s_crash_latched = false;
+    s_rc_lost_since_ms = 0U;
+    s_imu_lost_since_ms = 0U;
+    s_arm_lost_since_ms = 0U;
   }
 
   if (!s_status.armed && !s_status.motor_test_unlocked)
@@ -257,6 +303,9 @@ void Safety_RequestDisarm(void)
   s_status.last_disarm_flags = SAFETY_DISARM_ARM_LOST;
   s_motor_test_bench = false;
   s_motor_test_until_ms = 0U;
+  s_rc_lost_since_ms = 0U;
+  s_imu_lost_since_ms = 0U;
+  s_arm_lost_since_ms = 0U;
   MotorPwm_SetAll(0.0f);
   Topic_PublishStatus(&s_status);
 }

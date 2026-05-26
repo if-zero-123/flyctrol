@@ -1,18 +1,7 @@
 #include "led.h"
 
 #include "board_time.h"
-#include "FreeRTOS.h"
 #include "main.h"
-#include "task.h"
-
-static uint32_t led_time_ms(void)
-{
-  if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
-  {
-    return (uint32_t)xTaskGetTickCount() * (uint32_t)portTICK_PERIOD_MS;
-  }
-  return BoardTime_Millis();
-}
 
 void Led_Init(void)
 {
@@ -36,7 +25,7 @@ void Led_Toggle(led_id_t led)
 
 void Led_UpdateStatus(const flight_status_t *status)
 {
-  uint32_t now = led_time_ms();
+  uint32_t now = BoardTime_Millis();
   bool fast_blink = ((now / 100U) & 1U) != 0U;
   bool slow_blink = ((now / 500U) & 1U) != 0U;
 
