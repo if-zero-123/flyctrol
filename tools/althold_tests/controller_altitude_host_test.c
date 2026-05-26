@@ -378,6 +378,65 @@ static void test_stick_maps_to_velocity_and_velocity_pi_not_absolute_throttle(vo
   assert(debug.output_permille == (int16_t)(debug.base_permille + output));
 }
 
+static void test_early_liftoff_does_not_lock_hover_too_low_for_climbout(void)
+{
+  int16_t output = -1;
+  uint16_t base = 0U;
+  uint32_t timestamp_ms = 100U;
+  mixer_feedback_t feedback = make_feedback();
+  controller_altitude_debug_t debug;
+
+  ControllerAltitude_Reset();
+  debug = update(BOARD_ALT_STICK_CENTER_PERMILLE, 0, 0, true, 0U, &feedback, timestamp_ms, &base, &output);
+  assert(debug.state == CONTROLLER_ALTITUDE_STATE_GROUND_IDLE);
+
+  for (uint8_t i = 0U; i < 20U; i++)
+  {
+    timestamp_ms += 25U;
+    debug = update(BOARD_ALT_TAKEOFF_THROTTLE + 40U,
+                   0,
+                   0,
+                   true,
+                   0U,
+                   &feedback,
+                   timestamp_ms,
+                   &base,
+                   &output);
+    assert(debug.state == CONTROLLER_ALTITUDE_STATE_TAKEOFF);
+  }
+
+  timestamp_ms += 25U;
+  debug = update(BOARD_ALT_TAKEOFF_THROTTLE + 40U,
+                 BOARD_ALT_LIFTOFF_ALT_CM,
+                 BOARD_ALT_LIFTOFF_VEL_CMS,
+                 true,
+                 0U,
+                 &feedback,
+                 timestamp_ms,
+                 &base,
+                 &output);
+  assert(debug.state == CONTROLLER_ALTITUDE_STATE_ALT_HOLD);
+  assert(debug.hover_permille >= (int16_t)BOARD_ALT_HOVER_THRUST_PERMILLE);
+
+  for (uint8_t i = 0U; i < 80U; i++)
+  {
+    timestamp_ms += 25U;
+    debug = update(1000U,
+                   BOARD_ALT_LIFTOFF_ALT_CM,
+                   0,
+                   true,
+                   0U,
+                   &feedback,
+                   timestamp_ms,
+                   &base,
+                   &output);
+  }
+
+  assert(debug.target_velocity_cms >= (int16_t)(BOARD_ALT_STICK_CLIMB_MAX_CMS - 2));
+  assert(debug.output_permille >=
+         (int16_t)(BOARD_ALT_HOVER_THRUST_PERMILLE + 50));
+}
+
 static void test_low_stick_descends_without_dropping_to_idle(void)
 {
   int16_t output = -1;
@@ -438,6 +497,7 @@ int main(void)
   test_low_stick_has_enough_negative_authority_to_pull_down();
   test_ready_loss_freezes_without_reset();
   test_stick_maps_to_velocity_and_velocity_pi_not_absolute_throttle();
+  test_early_liftoff_does_not_lock_hover_too_low_for_climbout();
   test_low_stick_descends_without_dropping_to_idle();
   test_mixer_saturation_prevents_positive_integrator_windup();
   puts("controller_altitude_host_test: PASS");

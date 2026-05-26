@@ -519,7 +519,12 @@ int16_t ControllerAltitude_Update(const baro_sample_t *baro,
                         (int16_t)(s_hover_permille + BOARD_ALT_TOY_ASSIST_ENGAGE_HEADROOM_PERMILLE);
     if (liftoff_detected || assist_ready || (!above_takeoff && takeoff_committed))
     {
-      s_hover_permille = clamp_i16(s_base_permille, hover_min_permille(), hover_max_permille());
+      int32_t initial_hover = (int32_t)s_base_permille;
+      if (initial_hover < (int32_t)s_hover_permille)
+      {
+        initial_hover = (int32_t)s_hover_permille;
+      }
+      s_hover_permille = clamp_i16(initial_hover, hover_min_permille(), hover_max_permille());
       s_state = CONTROLLER_ALTITUDE_STATE_ALT_HOLD;
       s_hold_altitude_cm = baro->altitude_cm;
       s_velocity_control = !in_deadband;
