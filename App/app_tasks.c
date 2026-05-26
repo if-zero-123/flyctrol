@@ -35,6 +35,17 @@ static float absf_local(float v)
   return (v < 0.0f) ? -v : v;
 }
 
+static void delay_until_or_yield(TickType_t *last, TickType_t period)
+{
+  TickType_t now = xTaskGetTickCount();
+  vTaskDelayUntil(last, period);
+  if (xTaskGetTickCount() == now)
+  {
+    vTaskDelay(1U);
+    *last = xTaskGetTickCount();
+  }
+}
+
 static void create_task(TaskFunction_t fn,
                         const char *name,
                         uint16_t stack_words,
@@ -52,7 +63,7 @@ static void create_task(TaskFunction_t fn,
 void App_CreateTasks(void)
 {
   create_task(StabilizerTask, "stabilize", 256U, 5U, 51U);
-  create_task(CrsfTask, "crsf", 160U, 6U, 52U);
+  create_task(CrsfTask, "crsf", 160U, 4U, 52U);
   create_task(SafetyTask, "safety", 128U, 4U, 53U);
   create_task(BaroTask, "baro", 160U, 3U, 54U);
   create_task(BatteryTask, "battery", 128U, 2U, 55U);
@@ -182,7 +193,7 @@ static void StabilizerTask(void *argument)
     status.control = control;
     Topic_PublishStatus(&status);
 
-    vTaskDelayUntil(&last, period);
+    delay_until_or_yield(&last, period);
   }
 }
 
@@ -202,12 +213,22 @@ static void SafetyTask(void *argument)
 {
   (void)argument;
   TickType_t last = xTaskGetTickCount();
+  for (uint8_t i = 0U; i < 2U; i++)
+  {
+    Led_Set(LED_GREEN, true);
+    Led_Set(LED_BLUE, true);
+    vTaskDelay(pdMS_TO_TICKS(80U));
+    Led_Set(LED_GREEN, false);
+    Led_Set(LED_BLUE, false);
+    vTaskDelay(pdMS_TO_TICKS(80U));
+  }
+  last = xTaskGetTickCount();
   for (;;)
   {
     Safety_Update();
     flight_status_t status = Safety_GetStatus();
     Led_UpdateStatus(&status);
-    vTaskDelayUntil(&last, pdMS_TO_TICKS(10U));
+    delay_until_or_yield(&last, pdMS_TO_TICKS(10U));
   }
 }
 
@@ -237,7 +258,7 @@ static void BaroTask(void *argument)
         (void)Bmp280_Init();
       }
     }
-    vTaskDelayUntil(&last, pdMS_TO_TICKS(25U));
+    delay_until_or_yield(&last, pdMS_TO_TICKS(25U));
   }
 }
 
@@ -252,7 +273,7 @@ static void BatteryTask(void *argument)
     {
       Topic_PublishBattery(&batt);
     }
-    vTaskDelayUntil(&last, pdMS_TO_TICKS(100U));
+    delay_until_or_yield(&last, pdMS_TO_TICKS(100U));
   }
 }
 
