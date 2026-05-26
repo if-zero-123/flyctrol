@@ -35,7 +35,6 @@ void App_Start(void)
   AppBootStage_Set(42U);
   Led_Init();
   MotorPwm_Init();
-  BatteryAdc_Init();
   DebugUart_WriteLine("init: board");
 
   AppBootStage_Set(43U);
@@ -47,28 +46,8 @@ void App_Start(void)
   DebugUart_WriteLine("init: modules");
 
   AppBootStage_Set(44U);
-  DebugUart_WriteLine("init: mpu6050");
-  bool imu_ok = Mpu6050_Init();
-  if (imu_ok)
-  {
-    DebugUart_WriteLine("init: gyrocal");
-    imu_ok = Mpu6050_CalibrateGyro(128U);
-  }
-  AppBootStage_Set(45U);
-  DebugUart_WriteLine("init: bmp280");
-  bool baro_ok = Bmp280_Init();
-  AppBootStage_Set(46U);
-  DebugUart_WriteLine("init: crsf");
-  bool crsf_ok = Crsf_Init();
-  AppBootStage_Set(47U);
-
-  DebugUart_Printf("init imu=%u baro=%u crsf=%u\r\n",
-                   imu_ok ? 1U : 0U,
-                   baro_ok ? 1U : 0U,
-                   crsf_ok ? 1U : 0U);
-
+  DebugUart_WriteLine("init: sensor init deferred to tasks");
   DebugUart_WriteLine("init: tasks");
-  AppBootStage_Set(48U);
   App_CreateTasks();
   AppBootStage_Set(49U);
   DebugUart_WriteLine("init: done");

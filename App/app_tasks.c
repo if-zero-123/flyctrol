@@ -62,9 +62,9 @@ static void create_task(TaskFunction_t fn,
 
 void App_CreateTasks(void)
 {
-  create_task(StabilizerTask, "stabilize", 256U, 5U, 51U);
+  create_task(SafetyTask, "safety", 128U, 6U, 53U);
   create_task(CrsfTask, "crsf", 160U, 4U, 52U);
-  create_task(SafetyTask, "safety", 128U, 4U, 53U);
+  create_task(StabilizerTask, "stabilize", 256U, 5U, 51U);
   create_task(BaroTask, "baro", 160U, 3U, 54U);
   create_task(BatteryTask, "battery", 128U, 2U, 55U);
   create_task(CliTask, "cli", 384U, 1U, 57U);
@@ -78,6 +78,13 @@ static void StabilizerTask(void *argument)
   uint32_t last_imu_retry_ms = 0U;
   bool airmode_latched = false;
   bool previous_armed = false;
+  bool imu_ready = Mpu6050_Init();
+  if (imu_ready)
+  {
+    imu_ready = Mpu6050_CalibrateGyro(128U);
+  }
+  DebugUart_Printf("task imu init=%u\r\n", imu_ready ? 1U : 0U);
+  last = xTaskGetTickCount();
 
   for (;;)
   {
@@ -89,7 +96,7 @@ static void StabilizerTask(void *argument)
     float motor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     bool imu_updated = false;
 
-    if (Mpu6050_Read(&imu))
+    if (imu_ready && Mpu6050_Read(&imu))
     {
       Topic_PublishImu(&imu);
       EstimatorAttitude_Update(&imu, 0.002f, &attitude);
@@ -106,7 +113,11 @@ static void StabilizerTask(void *argument)
       if ((now - last_imu_retry_ms) >= 1000U)
       {
         last_imu_retry_ms = now;
-        (void)Mpu6050_Init();
+        imu_ready = Mpu6050_Init();
+        if (imu_ready)
+        {
+          imu_ready = Mpu6050_CalibrateGyro(32U);
+        }
       }
     }
 
@@ -200,6 +211,8 @@ static void StabilizerTask(void *argument)
 static void CrsfTask(void *argument)
 {
   (void)argument;
+  bool crsf_ok = Crsf_Init();
+  DebugUart_Printf("task crsf init=%u\r\n", crsf_ok ? 1U : 0U);
   Crsf_SetTaskHandle(xTaskGetCurrentTaskHandle());
   for (;;)
   {
@@ -213,15 +226,7 @@ static void SafetyTask(void *argument)
 {
   (void)argument;
   TickType_t last = xTaskGetTickCount();
-  for (uint8_t i = 0U; i < 2U; i++)
-  {
-    Led_Set(LED_GREEN, true);
-    Led_Set(LED_BLUE, true);
-    vTaskDelay(pdMS_TO_TICKS(80U));
-    Led_Set(LED_GREEN, false);
-    Led_Set(LED_BLUE, false);
-    vTaskDelay(pdMS_TO_TICKS(80U));
-  }
+  AppBootStage_TaskStarted();
   last = xTaskGetTickCount();
   for (;;)
   {
@@ -236,12 +241,15 @@ static void BaroTask(void *argument)
 {
   (void)argument;
   TickType_t last = xTaskGetTickCount();
+  bool baro_ready = Bmp280_Init();
+  DebugUart_Printf("task baro init=%u\r\n", baro_ready ? 1U : 0U);
+  last = xTaskGetTickCount();
   uint32_t last_baro_retry_ms = 0U;
   for (;;)
   {
     baro_sample_t raw;
     baro_sample_t filtered;
-    if (Bmp280_Read(&raw))
+    if (baro_ready && Bmp280_Read(&raw))
     {
       EstimatorAltitude_Update(&raw, &filtered);
       Topic_PublishBaro(&filtered);
@@ -255,7 +263,7 @@ static void BaroTask(void *argument)
       if ((now - last_baro_retry_ms) >= 1000U)
       {
         last_baro_retry_ms = now;
-        (void)Bmp280_Init();
+        baro_ready = Bmp280_Init();
       }
     }
     delay_until_or_yield(&last, pdMS_TO_TICKS(25U));
@@ -265,6 +273,7 @@ static void BaroTask(void *argument)
 static void BatteryTask(void *argument)
 {
   (void)argument;
+  BatteryAdc_Init();
   TickType_t last = xTaskGetTickCount();
   for (;;)
   {
