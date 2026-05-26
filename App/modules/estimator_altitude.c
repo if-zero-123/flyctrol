@@ -78,6 +78,20 @@ static bool pressure_plausible(int32_t pressure_pa)
          (pressure_pa <= BOARD_BARO_PRESSURE_MAX_PA);
 }
 
+static void zero_relative_state(int32_t pressure_pa, uint32_t timestamp_ms)
+{
+  s_baseline_pa = pressure_pa;
+  s_last_baseline_pressure_pa = pressure_pa;
+  s_has_velocity = true;
+  s_spike_count = 0U;
+  s_filtered_cm = 0.0f;
+  s_fused_altitude_cm = 0.0f;
+  s_velocity_cms = 0.0f;
+  s_accel_cms2 = 0.0f;
+  s_last_altitude_cm = 0;
+  s_last_timestamp_ms = timestamp_ms;
+}
+
 static void restart_baseline(int32_t pressure_pa, uint32_t timestamp_ms)
 {
   s_has_baseline = false;
@@ -216,6 +230,15 @@ void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
     s_has_velocity = false;
     s_has_baseline = true;
     out->healthy = true;
+  }
+
+  if (!Topic_GetStatus().armed)
+  {
+    zero_relative_state(baro->pressure_pa, baro->timestamp_ms);
+    out->altitude_cm = 0;
+    out->velocity_cms = 0;
+    out->healthy = true;
+    return;
   }
 
   int32_t raw_cm = ((s_baseline_pa - baro->pressure_pa) * 25) / 3;

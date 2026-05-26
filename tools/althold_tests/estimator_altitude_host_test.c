@@ -69,9 +69,29 @@ static void test_imu_prediction_moves_fused_altitude_between_baro_samples(void)
   s_stub_armed = false;
 }
 
+static void test_disarmed_pressure_warmup_does_not_walk_relative_altitude(void)
+{
+  baro_sample_t filtered;
+
+  EstimatorAltitude_Init();
+  s_stub_armed = false;
+  prime_baseline();
+
+  for (uint8_t i = 0U; i < 80U; i++)
+  {
+    int32_t pressure = 101325 + ((int32_t)i * 5);
+    baro_sample_t baro = make_baro(pressure, 425U + (25U * (uint32_t)i));
+    EstimatorAltitude_Update(&baro, &filtered);
+  }
+
+  assert(abs(filtered.altitude_cm) <= 20);
+  assert(abs(filtered.velocity_cms) <= 20);
+}
+
 int main(void)
 {
   test_imu_prediction_moves_fused_altitude_between_baro_samples();
+  test_disarmed_pressure_warmup_does_not_walk_relative_altitude();
   puts("estimator_altitude_host_test: PASS");
   return 0;
 }
