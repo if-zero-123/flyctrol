@@ -66,9 +66,14 @@ static const char *onoff(uint8_t value)
   return (value != 0U) ? "on" : "off";
 }
 
+static bool s_baro_cli_ref_valid;
+static int32_t s_baro_cli_ref_pa;
+static bool s_baro_cli_prev_valid;
+static int32_t s_baro_cli_prev_pa;
+
 static void print_help(void)
 {
-  DebugUart_WriteLine("cmd: help status clock heap i2cscan imu baro rc rcmap batt battdiag");
+  DebugUart_WriteLine("cmd: help status clock heap i2cscan imu baro [zero] rc rcmap batt battdiag");
   DebugUart_WriteLine("cmd: motormap control yawdir normal|reverse mixcheck [r_milli p_milli y_milli thr]");
   DebugUart_WriteLine("cmd: flight shows last armed-flight summary");
   DebugUart_WriteLine("cmd: flight core: airmode=on crash_protect=on brushed_pwm=timer duty");
@@ -271,18 +276,39 @@ static void print_imu(void)
                    (long)(BOARD_IMU_ACC_MAX_G_SQ * 100.0f));
 }
 
-static void print_baro(void)
+static void print_baro(bool reset_ref)
 {
   baro_sample_t baro = Topic_GetBaro();
   controller_altitude_debug_t alt;
   ControllerAltitude_GetDebug(&alt);
-  DebugUart_Printf("baro ok=%u temp=%d.%02dC pressure=%ldPa altitude=%ldcm vel=%dcm/s\r\n",
+  if (reset_ref)
+  {
+    s_baro_cli_ref_valid = false;
+    s_baro_cli_prev_valid = false;
+  }
+  if (baro.healthy && !s_baro_cli_ref_valid)
+  {
+    s_baro_cli_ref_pa = baro.pressure_pa;
+    s_baro_cli_ref_valid = true;
+  }
+  int32_t raw_abs_cm = ((101325 - baro.pressure_pa) * 25) / 3;
+  int32_t raw_rel_cm = s_baro_cli_ref_valid ? (((s_baro_cli_ref_pa - baro.pressure_pa) * 25) / 3) : 0;
+  int32_t pressure_delta_pa = s_baro_cli_prev_valid ? (baro.pressure_pa - s_baro_cli_prev_pa) : 0;
+  if (baro.healthy)
+  {
+    s_baro_cli_prev_pa = baro.pressure_pa;
+    s_baro_cli_prev_valid = true;
+  }
+  DebugUart_Printf("baro ok=%u temp=%d.%02dC pressure=%ldPa altitude=%ldcm vel=%dcm/s raw_abs=%ldcm raw_rel=%ldcm dP=%ldPa\r\n",
                    baro.healthy ? 1U : 0U,
                    baro.temperature_centi_c / 100,
                    abs(baro.temperature_centi_c % 100),
                    (long)baro.pressure_pa,
                    (long)baro.altitude_cm,
-                   baro.velocity_cms);
+                   baro.velocity_cms,
+                   (long)raw_abs_cm,
+                   (long)raw_rel_cm,
+                   (long)pressure_delta_pa);
   DebugUart_Printf("baro hold active=%u velctl=%u hold=%ldcm err=%dcm target_vel=%dcm/s est_vel=%dcm/s base=%d hover=%d corr=%d out=%d state=%u stick_ref=%d imu_pred=%u reliable=%u reject=%u limit=%d freeze=%u bq=%u sat=%u,%u scale=%u\r\n",
                    alt.active ? 1U : 0U,
                    alt.velocity_control ? 1U : 0U,
@@ -822,7 +848,7 @@ static void execute_line(char *line)
   }
   else if (strcmp(cmd, "baro") == 0)
   {
-    print_baro();
+    print_baro((a1 != NULL) && (strcmp(a1, "zero") == 0));
   }
   else if (strcmp(cmd, "rc") == 0)
   {
