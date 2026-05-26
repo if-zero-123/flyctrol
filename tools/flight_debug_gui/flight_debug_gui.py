@@ -1029,12 +1029,15 @@ class FlightDebugGui(tk.Tk):
             f"vel={althold.get('velocity_cms', '-')}cm/s "
             f"target={althold.get('target_velocity_cms', '-')}cm/s "
             f"base={althold.get('base', '-')} "
+            f"hover={althold.get('hover', '-')} "
             f"corr={althold.get('correction', '-')} "
             f"out={althold.get('output', '-')} "
             f"state={althold.get('state', '-')} "
             f"rel={int(bool(althold.get('assist_reliable', True)))} "
             f"rej={int(bool(althold.get('baro_rejected', False)))} "
-            f"lim={althold.get('correction_limit', '-')}"
+            f"lim={althold.get('correction_limit', '-')} "
+            f"freeze={althold.get('freeze_reason', '-')} "
+            f"sat={int(bool(althold.get('sat_hi', False)))},{int(bool(althold.get('sat_lo', False)))}"
         )
 
     @staticmethod

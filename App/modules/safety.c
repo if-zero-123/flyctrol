@@ -1,5 +1,9 @@
 #include "safety.h"
 
+#if defined(__GNUC__)
+#pragma GCC optimize ("Os")
+#endif
+
 #include "board_config.h"
 #include "board_time.h"
 #include "flight_monitor.h"

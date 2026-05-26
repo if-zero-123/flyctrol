@@ -1,5 +1,9 @@
 #include "flight_monitor.h"
 
+#if defined(__GNUC__)
+#pragma GCC optimize ("Os")
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -21,6 +25,10 @@ typedef struct {
   uint16_t max_throttle;
   uint16_t max_motor;
   uint16_t max_motor_spread;
+  uint32_t motor_sum_permille;
+  uint32_t motor_sample_count;
+  uint16_t motor_sat_high_count;
+  uint16_t motor_sat_low_count;
   bool althold_seen;
   int32_t min_baro_alt_cm;
   int32_t max_baro_alt_cm;
@@ -128,9 +136,26 @@ void FlightMonitor_Update(const flight_status_t *status)
       s_summary.max_motor = max_motor;
     }
     uint16_t spread = (uint16_t)(max_motor - min_motor);
+    uint16_t avg_motor = (uint16_t)(((uint32_t)min_motor + (uint32_t)max_motor) / 2U);
     if (spread > s_summary.max_motor_spread)
     {
       s_summary.max_motor_spread = spread;
+    }
+    s_summary.motor_sum_permille += avg_motor;
+    s_summary.motor_sample_count++;
+    if (max_motor >= (uint16_t)(status->motor_max_permille - 5U))
+    {
+      if (s_summary.motor_sat_high_count < 65535U)
+      {
+        s_summary.motor_sat_high_count++;
+      }
+    }
+    if (min_motor <= (uint16_t)(status->motor_idle_permille + 5U))
+    {
+      if (s_summary.motor_sat_low_count < 65535U)
+      {
+        s_summary.motor_sat_low_count++;
+      }
     }
     if (status->baro_mode || status->setpoint.baro_hold || (status->control.altitude_permille != 0))
     {
@@ -181,11 +206,16 @@ void FlightMonitor_Print(void)
                    (unsigned long)duration_ms,
                    s.stop_flags,
                    s.last_disarm);
-  DebugUart_Printf("flight min_batt=%umV max_thr=%u max_motor=%u spread=%u\r\n",
+  uint16_t avg_motor = (s.motor_sample_count == 0U) ? 0U :
+                       (uint16_t)(s.motor_sum_permille / s.motor_sample_count);
+  DebugUart_Printf("flight min_batt=%umV max_thr=%u max_motor=%u avg_motor=%u spread=%u sat_hi=%u sat_lo=%u\r\n",
                    (s.min_batt_mv == 65535U) ? 0U : s.min_batt_mv,
                    s.max_throttle,
                    s.max_motor,
-                   s.max_motor_spread);
+                   avg_motor,
+                   s.max_motor_spread,
+                   s.motor_sat_high_count,
+                   s.motor_sat_low_count);
   DebugUart_Printf("flight max_angle_cd roll=%d pitch=%d max_out_milli r=%d p=%d y=%d\r\n",
                    s.max_abs_roll_cd,
                    s.max_abs_pitch_cd,

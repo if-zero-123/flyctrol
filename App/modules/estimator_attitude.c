@@ -1,5 +1,9 @@
 #include "estimator_attitude.h"
 
+#if defined(__GNUC__)
+#pragma GCC optimize ("Os")
+#endif
+
 #include <math.h>
 #include <stddef.h>
 

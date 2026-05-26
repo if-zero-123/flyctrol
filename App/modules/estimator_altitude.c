@@ -1,5 +1,9 @@
 #include "estimator_altitude.h"
 
+#if defined(__GNUC__)
+#pragma GCC optimize ("Os")
+#endif
+
 #include <stddef.h>
 
 #include "board_config.h"
@@ -17,6 +21,7 @@ static float s_filtered_cm;
 static float s_fused_altitude_cm;
 static float s_velocity_cms;
 static float s_accel_cms2;
+static float s_accel_bias_cms2;
 static int32_t s_last_altitude_cm;
 static uint32_t s_last_timestamp_ms;
 
@@ -86,6 +91,7 @@ static void restart_baseline(int32_t pressure_pa, uint32_t timestamp_ms)
   s_fused_altitude_cm = 0.0f;
   s_velocity_cms = 0.0f;
   s_accel_cms2 = 0.0f;
+  s_accel_bias_cms2 = 0.0f;
   s_last_altitude_cm = 0;
   s_last_timestamp_ms = timestamp_ms;
 }
@@ -103,6 +109,7 @@ void EstimatorAltitude_Init(void)
   s_fused_altitude_cm = 0.0f;
   s_velocity_cms = 0.0f;
   s_accel_cms2 = 0.0f;
+  s_accel_bias_cms2 = 0.0f;
   s_last_altitude_cm = 0;
   s_last_timestamp_ms = 0U;
 }
@@ -135,6 +142,12 @@ void EstimatorAltitude_PredictImu(const imu_sample_t *imu,
                      (imu->accel_g[1] * gravity_body[1]) +
                      (imu->accel_g[2] * gravity_body[2]);
   float accel_cms2 = (vertical_g - 1.0f) * 980.665f;
+  if (!Topic_GetStatus().armed)
+  {
+    s_accel_bias_cms2 += pt1_alpha(BOARD_ALT_IMU_BIAS_LPF_HZ, dt_s) *
+                         (accel_cms2 - s_accel_bias_cms2);
+  }
+  accel_cms2 -= s_accel_bias_cms2;
 
   if (absf_local(accel_cms2) < BOARD_ALT_IMU_ACC_DEADBAND_CMS2)
   {
@@ -197,6 +210,7 @@ void EstimatorAltitude_Update(const baro_sample_t *baro, baro_sample_t *out)
     s_fused_altitude_cm = 0.0f;
     s_velocity_cms = 0.0f;
     s_accel_cms2 = 0.0f;
+    s_accel_bias_cms2 = 0.0f;
     s_last_altitude_cm = 0;
     s_last_timestamp_ms = baro->timestamp_ms;
     s_has_velocity = false;

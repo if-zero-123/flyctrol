@@ -10,5 +10,9 @@ uint16_t MixerQuad_GetMotorMaxPermille(void);
 void MixerQuad_ResetThrottleRamp(void);
 void MixerQuad_PrimeThrottleRamp(uint16_t permille);
 void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, float motor_out[4]);
+void MixerQuad_MixWithFeedback(uint16_t throttle_permille,
+                               const control_output_t *control,
+                               float motor_out[4],
+                               mixer_feedback_t *feedback);
 
 #endif /* APP_MIXER_QUAD_H */

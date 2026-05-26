@@ -1,5 +1,11 @@
 #include "app_tasks.h"
 
+#if defined(__GNUC__)
+#pragma GCC optimize ("Os")
+#endif
+
+#include <string.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
 #include "battery_adc.h"
@@ -68,7 +74,8 @@ static void StabilizerTask(void *argument)
   bool airmode_latched = false;
   bool previous_armed = false;
   bool takeoff_latched = false;
-  bool previous_altitude_active = false;
+  mixer_feedback_t previous_mixer_feedback = {0};
+  previous_mixer_feedback.attitude_scale_permille = 1000U;
 
   for (;;)
   {
@@ -131,9 +138,12 @@ static void StabilizerTask(void *argument)
     {
       airmode_latched = false;
       takeoff_latched = false;
-      previous_altitude_active = false;
+      memset(&previous_mixer_feedback, 0, sizeof(previous_mixer_feedback));
+      previous_mixer_feedback.attitude_scale_permille = 1000U;
     }
-    else if ((BOARD_AIRMODE_ENABLE != 0U) && (sp.throttle_permille >= BOARD_AIRMODE_START_THROTTLE))
+    else if ((BOARD_AIRMODE_ENABLE != 0U) &&
+             (((!rc.baro_mode) && (sp.throttle_permille >= BOARD_AIRMODE_START_THROTTLE)) ||
+              (rc.baro_mode && ControllerAltitude_IsFlying())))
     {
       airmode_latched = true;
     }
@@ -165,52 +175,65 @@ static void StabilizerTask(void *argument)
     {
       control = status.control;
     }
-    bool altitude_ready = control_enabled && status.baro_mode && attitude.healthy && baro_recent &&
-                          (absf_local(attitude.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
-                          (absf_local(attitude.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
-    bool altitude_active = altitude_ready;
-    if (altitude_active && !previous_altitude_active)
+    bool tilt_ok = attitude.healthy &&
+                   (absf_local(attitude.roll_deg) <= BOARD_ALT_TILT_LIMIT_DEG) &&
+                   (absf_local(attitude.pitch_deg) <= BOARD_ALT_TILT_LIMIT_DEG);
+    uint8_t altitude_freeze_reason = CONTROLLER_ALTITUDE_FREEZE_NONE;
+    if (!baro_recent)
     {
-      EstimatorAltitude_ResetDynamic();
+      altitude_freeze_reason |= CONTROLLER_ALTITUDE_FREEZE_BARO;
     }
-    control.altitude_permille = ControllerAltitude_Update(&baro, &sp, altitude_active, 0.002f);
-    previous_altitude_active = altitude_active;
+    if (!status.imu_ok || !attitude.healthy)
+    {
+      altitude_freeze_reason |= CONTROLLER_ALTITUDE_FREEZE_IMU;
+    }
+    if (!tilt_ok)
+    {
+      altitude_freeze_reason |= CONTROLLER_ALTITUDE_FREEZE_TILT;
+    }
+    bool altitude_requested = status.armed && baro_mode_requested && sp.baro_hold;
+    bool altitude_ready = altitude_requested && baro_recent && status.imu_ok && attitude.healthy && tilt_ok;
+    uint16_t altitude_base_throttle = sp.throttle_permille;
+    control.altitude_permille = ControllerAltitude_Update(&baro,
+                                                          &sp,
+                                                          altitude_requested,
+                                                          altitude_ready,
+                                                          altitude_freeze_reason,
+                                                          &previous_mixer_feedback,
+                                                          0.002f,
+                                                          &altitude_base_throttle);
 
     if (Safety_CanRunMotors())
     {
       if (control_enabled)
       {
-        if (altitude_active)
+        mixer_feedback_t mixer_feedback = {0};
+        mixer_feedback.attitude_scale_permille = 1000U;
+        if (baro_mode_requested && ControllerAltitude_IsActive())
         {
-          int16_t altitude_throttle = control.altitude_permille;
-          if (altitude_throttle < 0)
-          {
-            altitude_throttle = 0;
-          }
-          if (altitude_throttle > 1000)
-          {
-            altitude_throttle = 1000;
-          }
-          control_output_t mix_control = control;
-          mix_control.altitude_permille = 0;
-          MixerQuad_Mix((uint16_t)altitude_throttle, &mix_control, motor);
+          MixerQuad_MixWithFeedback(altitude_base_throttle, &control, motor, &mixer_feedback);
         }
         else
         {
-          MixerQuad_Mix(sp.throttle_permille, &control, motor);
+          MixerQuad_MixWithFeedback(sp.throttle_permille, &control, motor, &mixer_feedback);
         }
+        previous_mixer_feedback = mixer_feedback;
         MotorPwm_Set4(motor);
       }
       else
       {
         MixerQuad_PrimeThrottleRamp(MixerQuad_GetMotorIdlePermille());
         MotorPwm_SetAllPermille(MixerQuad_GetMotorIdlePermille());
+        memset(&previous_mixer_feedback, 0, sizeof(previous_mixer_feedback));
+        previous_mixer_feedback.attitude_scale_permille = 1000U;
       }
     }
     else if (!Safety_CanMotorTest())
     {
       MixerQuad_ResetThrottleRamp();
       MotorPwm_SetAll(0.0f);
+      memset(&previous_mixer_feedback, 0, sizeof(previous_mixer_feedback));
+      previous_mixer_feedback.attitude_scale_permille = 1000U;
     }
 
     status = Safety_GetStatus();

@@ -1,5 +1,9 @@
 #include "mixer_quad.h"
 
+#if defined(__GNUC__)
+#pragma GCC optimize ("Os")
+#endif
+
 #include "board_config.h"
 
 static uint16_t s_motor_idle_permille = BOARD_MOTOR_IDLE_PERMILLE;
@@ -20,10 +24,31 @@ static float clampf_local(float v, float min_v, float max_v)
   return v;
 }
 
-static void normalize_to_range(float motor_out[4], float idle, float max_out, float throttle)
+static uint16_t duty_to_permille(float duty)
+{
+  if (duty < 0.0f)
+  {
+    duty = 0.0f;
+  }
+  if (duty > 1.0f)
+  {
+    duty = 1.0f;
+  }
+  return (uint16_t)(duty * 1000.0f);
+}
+
+static void normalize_to_range(float motor_out[4],
+                               float idle,
+                               float max_out,
+                               float throttle,
+                               mixer_feedback_t *feedback)
 {
   float min_v = motor_out[0];
   float max_v = motor_out[0];
+  float scale = 1.0f;
+  bool attitude_scaled = false;
+  bool saturated_low = false;
+  bool saturated_high = false;
   for (uint8_t i = 1U; i < 4U; i++)
   {
     if (motor_out[i] < min_v)
@@ -45,7 +70,8 @@ static void normalize_to_range(float motor_out[4], float idle, float max_out, fl
   }
   if ((span > available) && (span > 0.0001f))
   {
-    float scale = available / span;
+    scale = available / span;
+    attitude_scaled = true;
     for (uint8_t i = 0U; i < 4U; i++)
     {
       motor_out[i] = throttle + ((motor_out[i] - throttle) * scale);
@@ -67,10 +93,12 @@ static void normalize_to_range(float motor_out[4], float idle, float max_out, fl
   float offset = 0.0f;
   if (min_v < idle)
   {
+    saturated_low = true;
     offset = idle - min_v;
   }
   if ((max_v + offset) > max_out)
   {
+    saturated_high = true;
     offset = max_out - max_v;
   }
   for (uint8_t i = 0U; i < 4U; i++)
@@ -81,6 +109,32 @@ static void normalize_to_range(float motor_out[4], float idle, float max_out, fl
   for (uint8_t i = 0U; i < 4U; i++)
   {
     motor_out[i] = clampf_local(motor_out[i], idle, max_out);
+  }
+
+  if (feedback != 0)
+  {
+    float final_min = motor_out[0];
+    float final_max = motor_out[0];
+    for (uint8_t i = 1U; i < 4U; i++)
+    {
+      if (motor_out[i] < final_min)
+      {
+        final_min = motor_out[i];
+      }
+      if (motor_out[i] > final_max)
+      {
+        final_max = motor_out[i];
+      }
+    }
+
+    feedback->motor_min_permille = duty_to_permille(final_min);
+    feedback->motor_max_permille = duty_to_permille(final_max);
+    feedback->motor_spread_permille = (uint16_t)(feedback->motor_max_permille -
+                                                 feedback->motor_min_permille);
+    feedback->attitude_scale_permille = duty_to_permille(scale);
+    feedback->saturated_high = saturated_high || (feedback->motor_max_permille >= s_motor_max_permille);
+    feedback->saturated_low = saturated_low || (feedback->motor_min_permille <= s_motor_idle_permille);
+    feedback->attitude_scaled = attitude_scaled;
   }
 }
 
@@ -166,6 +220,14 @@ static uint16_t slew_throttle(uint16_t throttle_permille)
 
 void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, float motor_out[4])
 {
+  MixerQuad_MixWithFeedback(throttle_permille, control, motor_out, 0);
+}
+
+void MixerQuad_MixWithFeedback(uint16_t throttle_permille,
+                               const control_output_t *control,
+                               float motor_out[4],
+                               mixer_feedback_t *feedback)
+{
   if ((control == 0) || (motor_out == 0))
   {
     return;
@@ -191,6 +253,17 @@ void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, 
     throttle = (int32_t)s_motor_max_permille;
   }
   throttle = (int32_t)slew_throttle((uint16_t)throttle);
+  if (feedback != 0)
+  {
+    feedback->throttle_permille = (uint16_t)throttle;
+    feedback->motor_min_permille = (uint16_t)throttle;
+    feedback->motor_max_permille = (uint16_t)throttle;
+    feedback->motor_spread_permille = 0U;
+    feedback->attitude_scale_permille = 1000U;
+    feedback->saturated_high = false;
+    feedback->saturated_low = false;
+    feedback->attitude_scaled = false;
+  }
 
   float idle = (float)idle_permille / 1000.0f;
   float max_out = (float)s_motor_max_permille / 1000.0f;
@@ -203,5 +276,5 @@ void MixerQuad_Mix(uint16_t throttle_permille, const control_output_t *control, 
   motor_out[1] = t - r - p + y; /* M2 front-right, CCW */
   motor_out[2] = t + r + p + y; /* M3 rear-left, CCW */
   motor_out[3] = t + r - p - y; /* M4 front-left, CW */
-  normalize_to_range(motor_out, idle, max_out, t);
+  normalize_to_range(motor_out, idle, max_out, t, feedback);
 }

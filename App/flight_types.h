@@ -68,8 +68,19 @@ typedef struct {
   float roll;
   float pitch;
   float yaw;
-  int16_t altitude_permille; /* Alt-hold absolute throttle for telemetry; zero before mixer add. */
+  int16_t altitude_permille; /* Alt-hold correction added by the mixer. */
 } control_output_t;
+
+typedef struct {
+  uint16_t throttle_permille;
+  uint16_t motor_min_permille;
+  uint16_t motor_max_permille;
+  uint16_t motor_spread_permille;
+  uint16_t attitude_scale_permille;
+  bool saturated_high;
+  bool saturated_low;
+  bool attitude_scaled;
+} mixer_feedback_t;
 
 typedef struct {
   bool armed;

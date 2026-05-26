@@ -1,5 +1,9 @@
 #include "telemetry.h"
 
+#if defined(__GNUC__)
+#pragma GCC optimize ("Os")
+#endif
+
 #include "app_main.h"
 #include "controller_altitude.h"
 #include "debug_uart.h"
@@ -67,21 +71,28 @@ void Telemetry_PrintOnce(void)
                    (long)baro.altitude_cm,
                    baro.velocity_cms,
                    (long)baro.pressure_pa);
-  DebugUart_Printf("ctl sp=%ld,%ld,%ld thr=%u alt_act=%u alt_thr=%d alt_corr=%d out=%ld,%ld,%ld alt_state=%u alt_rel=%u alt_rej=%u alt_lim=%d\r\n",
+  DebugUart_Printf("ctl sp=%ld,%ld,%ld thr=%u alt_act=%u alt_base=%d alt_hover=%d alt_corr=%d alt_out=%d out=%ld,%ld,%ld alt_state=%u alt_rel=%u alt_rej=%u alt_lim=%d freeze=%u bq=%u sat=%u,%u scale=%u\r\n",
                    (long)deg_to_cdeg(st.setpoint.roll_deg),
                    (long)deg_to_cdeg(st.setpoint.pitch_deg),
                    (long)deg_to_cdeg(st.setpoint.yaw_rate_dps),
                    st.setpoint.throttle_permille,
                    alt.active ? 1U : 0U,
-                   st.control.altitude_permille,
+                   alt.base_permille,
+                   alt.hover_permille,
                    alt.correction_permille,
+                   alt.output_permille,
                    (long)(st.control.roll * 1000.0f),
                    (long)(st.control.pitch * 1000.0f),
                    (long)(st.control.yaw * 1000.0f),
                    (unsigned int)alt.state,
                    alt.assist_reliable ? 1U : 0U,
                    alt.baro_rejected ? 1U : 0U,
-                   alt.assist_correction_limit_permille);
+                   alt.assist_correction_limit_permille,
+                   alt.freeze_reason,
+                   alt.baro_quality,
+                   alt.sat_hi ? 1U : 0U,
+                   alt.sat_lo ? 1U : 0U,
+                   alt.attitude_scale_permille);
   DebugUart_Printf("mot %ld %ld %ld %ld\r\n",
                    (long)duty_to_permille(motor[0]),
                    (long)duty_to_permille(motor[1]),

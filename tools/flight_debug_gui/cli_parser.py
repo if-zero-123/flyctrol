@@ -219,6 +219,26 @@ class FlightCliParser:
         if m.group(19) is not None:
             self.state["althold"]["throttle_ok"] = bool(int(m.group(19)))
             self.state["althold"]["throttle_min"] = int(m.group(20))
+        extra = self.state["althold"]
+        m2 = re.search(
+            rf"base={_INT} hover={_INT} target_vel={_INT} est_vel={_INT} "
+            rf"freeze=(\d+) bq=(\d+) sat=(\d+),(\d+) scale=(\d+)",
+            text,
+        )
+        if m2:
+            extra["base"] = int(m2.group(1))
+            extra["hover"] = int(m2.group(2))
+            extra["target_velocity_cms"] = int(m2.group(3))
+            extra["estimated_velocity_cms"] = int(m2.group(4))
+            extra["freeze_reason"] = int(m2.group(5))
+            extra["baro_quality"] = int(m2.group(6))
+            extra["sat_hi"] = bool(int(m2.group(7)))
+            extra["sat_lo"] = bool(int(m2.group(8)))
+            extra["attitude_scale"] = int(m2.group(9))
+        m3 = re.search(r"thr_ok=(\d+) thr_min=(\d+)", text)
+        if m3:
+            extra["throttle_ok"] = bool(int(m3.group(1)))
+            extra["throttle_min"] = int(m3.group(2))
 
     def _parse_uptime(self, text: str) -> None:
         m = re.search(r"uptime=(\d+)ms throttle=(\d+) motor_test=(\d+)", text)
@@ -286,9 +306,10 @@ class FlightCliParser:
     def _parse_baro_hold(self, text: str) -> None:
         m = re.search(
             rf"baro hold active=(\d+) velctl=(\d+) hold={_INT}cm err={_INT}cm "
-            rf"target_vel={_INT}cm/s base={_INT} corr={_INT} out={_INT}"
+            rf"target_vel={_INT}cm/s(?: est_vel={_INT}cm/s)? base={_INT}(?: hover={_INT})? corr={_INT} out={_INT}"
             rf"(?: state=(\d+) stick_ref={_INT} imu_pred=(\d+))?"
-            rf"(?: reliable=(\d+) reject=(\d+) limit={_INT})?",
+            rf"(?: reliable=(\d+) reject=(\d+) limit={_INT})?"
+            rf"(?: freeze=(\d+) bq=(\d+) sat=(\d+),(\d+) scale=(\d+))?",
             text,
         )
         if not m:
@@ -301,19 +322,27 @@ class FlightCliParser:
                 "hold_altitude_cm": int(m.group(3)),
                 "error_cm": int(m.group(4)),
                 "target_velocity_cms": int(m.group(5)),
-                "base": int(m.group(6)),
-                "correction": int(m.group(7)),
-                "output": int(m.group(8)),
+                "estimated_velocity_cms": int(m.group(6) or 0),
+                "base": int(m.group(7)),
+                "hover": int(m.group(8) or 0),
+                "correction": int(m.group(9)),
+                "output": int(m.group(10)),
             }
         )
-        if m.group(9) is not None:
-            alt["state"] = int(m.group(9))
-            alt["stick_reference"] = int(m.group(10))
-            alt["imu_predict"] = bool(int(m.group(11)))
-        if m.group(12) is not None:
-            alt["assist_reliable"] = bool(int(m.group(12)))
-            alt["baro_rejected"] = bool(int(m.group(13)))
-            alt["correction_limit"] = int(m.group(14))
+        if m.group(11) is not None:
+            alt["state"] = int(m.group(11))
+            alt["stick_reference"] = int(m.group(12))
+            alt["imu_predict"] = bool(int(m.group(13)))
+        if m.group(14) is not None:
+            alt["assist_reliable"] = bool(int(m.group(14)))
+            alt["baro_rejected"] = bool(int(m.group(15)))
+            alt["correction_limit"] = int(m.group(16))
+        if m.group(17) is not None:
+            alt["freeze_reason"] = int(m.group(17))
+            alt["baro_quality"] = int(m.group(18))
+            alt["sat_hi"] = bool(int(m.group(19)))
+            alt["sat_lo"] = bool(int(m.group(20)))
+            alt["attitude_scale"] = int(m.group(21))
         self.state["althold"] = alt
 
     def _parse_rc_status(self, text: str) -> None:
@@ -448,9 +477,10 @@ class FlightCliParser:
     def _parse_control_alt(self, text: str) -> None:
         m = re.search(
             rf"control alt active=(\d+) velctl=(\d+) hold={_INT}cm err={_INT}cm "
-            rf"vel={_INT} target={_INT} base={_INT} corr={_INT}"
+            rf"vel={_INT} target={_INT} base={_INT}(?: hover={_INT})? corr={_INT}"
             rf"(?: out={_INT} state=(\d+) stick_ref={_INT} imu_pred=(\d+))?"
-            rf"(?: reliable=(\d+) reject=(\d+) limit={_INT})?",
+            rf"(?: reliable=(\d+) reject=(\d+) limit={_INT})?"
+            rf"(?: freeze=(\d+) bq=(\d+) sat=(\d+),(\d+) scale=(\d+))?",
             text,
         )
         if not m:
@@ -465,18 +495,25 @@ class FlightCliParser:
                 "velocity_cms": int(m.group(5)),
                 "target_velocity_cms": int(m.group(6)),
                 "base": int(m.group(7)),
-                "correction": int(m.group(8)),
+                "hover": int(m.group(8) or 0),
+                "correction": int(m.group(9)),
             }
         )
-        if m.group(9) is not None:
-            alt["output"] = int(m.group(9))
-            alt["state"] = int(m.group(10))
-            alt["stick_reference"] = int(m.group(11))
-            alt["imu_predict"] = bool(int(m.group(12)))
-        if m.group(13) is not None:
-            alt["assist_reliable"] = bool(int(m.group(13)))
-            alt["baro_rejected"] = bool(int(m.group(14)))
-            alt["correction_limit"] = int(m.group(15))
+        if m.group(10) is not None:
+            alt["output"] = int(m.group(10))
+            alt["state"] = int(m.group(11))
+            alt["stick_reference"] = int(m.group(12))
+            alt["imu_predict"] = bool(int(m.group(13)))
+        if m.group(14) is not None:
+            alt["assist_reliable"] = bool(int(m.group(14)))
+            alt["baro_rejected"] = bool(int(m.group(15)))
+            alt["correction_limit"] = int(m.group(16))
+        if m.group(17) is not None:
+            alt["freeze_reason"] = int(m.group(17))
+            alt["baro_quality"] = int(m.group(18))
+            alt["sat_hi"] = bool(int(m.group(19)))
+            alt["sat_lo"] = bool(int(m.group(20)))
+            alt["attitude_scale"] = int(m.group(21))
         self.state["althold"] = alt
 
     def _parse_motors(self, text: str) -> None:

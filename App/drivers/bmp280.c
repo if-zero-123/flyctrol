@@ -1,5 +1,9 @@
 #include "bmp280.h"
 
+#if defined(__GNUC__)
+#pragma GCC optimize ("Os")
+#endif
+
 #include <string.h>
 
 #include "i2c_bus.h"

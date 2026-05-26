@@ -7,10 +7,12 @@
 #include "estimator_altitude.h"
 #include "board_config.h"
 
+static bool s_stub_armed;
+
 flight_status_t Topic_GetStatus(void)
 {
   flight_status_t status = {0};
-  status.armed = false;
+  status.armed = s_stub_armed;
   return status;
 }
 
@@ -42,7 +44,7 @@ static void prime_baseline(void)
   assert(filtered.healthy);
 }
 
-static void test_imu_prediction_is_disabled_for_v1_baro_only_velocity(void)
+static void test_imu_prediction_moves_fused_altitude_between_baro_samples(void)
 {
   imu_sample_t imu = {0};
   attitude_t attitude = {0};
@@ -50,6 +52,7 @@ static void test_imu_prediction_is_disabled_for_v1_baro_only_velocity(void)
 
   EstimatorAltitude_Init();
   prime_baseline();
+  s_stub_armed = true;
 
   imu.accel_g[2] = 1.30f;
   imu.healthy = true;
@@ -61,13 +64,14 @@ static void test_imu_prediction_is_disabled_for_v1_baro_only_velocity(void)
 
   baro_sample_t baro = make_baro(101325, 450U);
   EstimatorAltitude_Update(&baro, &filtered);
-  assert(abs(filtered.velocity_cms) <= BOARD_BARO_VEL_DEADBAND_CMS);
-  assert(abs((int)filtered.altitude_cm) <= BOARD_ALT_HOLD_DB_CM);
+  assert(filtered.velocity_cms > 15);
+  assert(filtered.altitude_cm > 3);
+  s_stub_armed = false;
 }
 
 int main(void)
 {
-  test_imu_prediction_is_disabled_for_v1_baro_only_velocity();
+  test_imu_prediction_moves_fused_altitude_between_baro_samples();
   puts("estimator_altitude_host_test: PASS");
   return 0;
 }

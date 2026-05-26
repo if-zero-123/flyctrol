@@ -1,5 +1,9 @@
 #include "cli.h"
 
+#if defined(__GNUC__)
+#pragma GCC optimize ("Os")
+#endif
+
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -135,7 +139,7 @@ static void print_status(void)
                    st.baro_mode ? 1U : 0U,
                    st.air_mode ? 1U : 0U,
                    st.crash_detected ? 1U : 0U);
-  DebugUart_Printf("althold req=%u ready=%u active=%u baro_ok=%u imu_ok=%u tilt_ok=%u armed=%u alt=%ldcm vel=%dcm/s out=%d corr=%d takeoff_thr=%u state=%u stick_ref=%d imu_pred=%u reliable=%u reject=%u limit=%d\r\n",
+  DebugUart_Printf("althold req=%u ready=%u active=%u baro_ok=%u imu_ok=%u tilt_ok=%u armed=%u alt=%ldcm vel=%dcm/s out=%d corr=%d takeoff_thr=%u state=%u stick_ref=%d imu_pred=%u reliable=%u reject=%u limit=%d base=%d hover=%d target_vel=%d est_vel=%d freeze=%u bq=%u sat=%u,%u scale=%u\r\n",
                    rc.baro_mode ? 1U : 0U,
                    alt_ready ? 1U : 0U,
                    alt.active ? 1U : 0U,
@@ -153,7 +157,16 @@ static void print_status(void)
                    BOARD_ALT_IMU_PREDICT_ENABLE,
                    alt.assist_reliable ? 1U : 0U,
                    alt.baro_rejected ? 1U : 0U,
-                   alt.assist_correction_limit_permille);
+                   alt.assist_correction_limit_permille,
+                   alt.base_permille,
+                   alt.hover_permille,
+                   alt.target_velocity_cms,
+                   alt.estimated_velocity_cms,
+                   alt.freeze_reason,
+                   alt.baro_quality,
+                   alt.sat_hi ? 1U : 0U,
+                   alt.sat_lo ? 1U : 0U,
+                   alt.attitude_scale_permille);
   DebugUart_Printf("uptime=%lums throttle=%u motor_test=%u\r\n",
                    (unsigned long)st.uptime_ms,
                    st.throttle_permille,
@@ -170,16 +183,18 @@ static void print_status(void)
                    BOARD_ALT_STICK_CENTER_PERMILLE,
                    BOARD_ALT_ARM_CENTER_TOLERANCE,
                    BOARD_BATT_CRITICAL_MV);
-  DebugUart_Printf("alt_profile stick_mid=%u hover_base=%u takeoff_thr=%u toy_climb=%d toy_descend=%d toy_corr=%d toy_bad=%d toy_hover=%u-%u slew_up=%d slew_down=%d\r\n",
+  DebugUart_Printf("alt_profile stick_mid=%u hover_base=%u takeoff_thr=%u climb=%d descend=%d hold_vel=%d corr_lim=%d hover=%u-%u freeze=%ums tilt=%lddeg slew_up=%d slew_down=%d\r\n",
                    BOARD_ALT_STICK_CENTER_PERMILLE,
                    BOARD_ALT_HOVER_THRUST_PERMILLE,
                    BOARD_ALT_TAKEOFF_THROTTLE,
-                   BOARD_ALT_TOY_CLIMB_MAX_CMS,
-                   BOARD_ALT_TOY_DESCEND_MAX_CMS,
-                   BOARD_ALT_TOY_CORR_LIMIT_PERMILLE,
-                   BOARD_ALT_TOY_BAD_BARO_LIMIT_PERMILLE,
+                   BOARD_ALT_STICK_CLIMB_MAX_CMS,
+                   BOARD_ALT_STICK_DESCEND_MAX_CMS,
+                   BOARD_ALT_HOLD_MAX_VEL_CMS,
+                   BOARD_ALT_OUTPUT_LIMIT_PERMILLE,
                    BOARD_ALT_TOY_HOVER_MIN_PERMILLE,
-                   BOARD_ALT_TOY_HOVER_MAX_PERMILLE,
+                   BOARD_ALT_BASE_MAX_PERMILLE,
+                   BOARD_ALT_FREEZE_HOLD_MS,
+                   (long)BOARD_ALT_TILT_LIMIT_DEG,
                    BOARD_ALT_OUTPUT_SLEW_UP_PER_SAMPLE,
                    BOARD_ALT_OUTPUT_SLEW_DOWN_PER_SAMPLE);
   DebugUart_Printf("flight_core airmode=%s start_thr=%u crash_angle=%lddeg crash_gyro=%s/%lddps hold=%ums\r\n",
@@ -268,13 +283,15 @@ static void print_baro(void)
                    (long)baro.pressure_pa,
                    (long)baro.altitude_cm,
                    baro.velocity_cms);
-  DebugUart_Printf("baro hold active=%u velctl=%u hold=%ldcm err=%dcm target_vel=%dcm/s base=%d corr=%d out=%d state=%u stick_ref=%d imu_pred=%u reliable=%u reject=%u limit=%d\r\n",
+  DebugUart_Printf("baro hold active=%u velctl=%u hold=%ldcm err=%dcm target_vel=%dcm/s est_vel=%dcm/s base=%d hover=%d corr=%d out=%d state=%u stick_ref=%d imu_pred=%u reliable=%u reject=%u limit=%d freeze=%u bq=%u sat=%u,%u scale=%u\r\n",
                    alt.active ? 1U : 0U,
                    alt.velocity_control ? 1U : 0U,
                    (long)alt.hold_altitude_cm,
                    alt.altitude_error_cm,
                    alt.target_velocity_cms,
-                   alt.throttle_base_permille,
+                   alt.estimated_velocity_cms,
+                   alt.base_permille,
+                   alt.hover_permille,
                    alt.correction_permille,
                    alt.output_permille,
                    (unsigned int)alt.state,
@@ -282,7 +299,12 @@ static void print_baro(void)
                    BOARD_ALT_IMU_PREDICT_ENABLE,
                    alt.assist_reliable ? 1U : 0U,
                    alt.baro_rejected ? 1U : 0U,
-                   alt.assist_correction_limit_permille);
+                   alt.assist_correction_limit_permille,
+                   alt.freeze_reason,
+                   alt.baro_quality,
+                   alt.sat_hi ? 1U : 0U,
+                   alt.sat_lo ? 1U : 0U,
+                   alt.attitude_scale_permille);
 }
 
 static void print_rc(void)
@@ -416,19 +438,20 @@ static void print_control(void)
   DebugUart_Printf("control trim_cd r=%ld p=%ld\r\n",
                    (long)deg_to_cdeg(trim_roll),
                    (long)deg_to_cdeg(trim_pitch));
-  DebugUart_Printf("control out_milli r=%ld p=%ld y=%ld alt_thr=%d\r\n",
+  DebugUart_Printf("control out_milli r=%ld p=%ld y=%ld alt_corr=%d\r\n",
                    (long)float_to_milli(st.control.roll),
                    (long)float_to_milli(st.control.pitch),
                    (long)float_to_milli(st.control.yaw),
                    st.control.altitude_permille);
-  DebugUart_Printf("control alt active=%u velctl=%u hold=%ldcm err=%dcm vel=%d target=%d base=%d corr=%d out=%d state=%u stick_ref=%d imu_pred=%u reliable=%u reject=%u limit=%d\r\n",
+  DebugUart_Printf("control alt active=%u velctl=%u hold=%ldcm err=%dcm vel=%d target=%d base=%d hover=%d corr=%d out=%d state=%u stick_ref=%d imu_pred=%u reliable=%u reject=%u limit=%d freeze=%u bq=%u sat=%u,%u scale=%u\r\n",
                    alt.active ? 1U : 0U,
                    alt.velocity_control ? 1U : 0U,
                    (long)alt.hold_altitude_cm,
                    alt.altitude_error_cm,
                    alt.velocity_cms,
                    alt.target_velocity_cms,
-                   alt.throttle_base_permille,
+                   alt.base_permille,
+                   alt.hover_permille,
                    alt.correction_permille,
                    alt.output_permille,
                    (unsigned int)alt.state,
@@ -436,7 +459,12 @@ static void print_control(void)
                    BOARD_ALT_IMU_PREDICT_ENABLE,
                    alt.assist_reliable ? 1U : 0U,
                    alt.baro_rejected ? 1U : 0U,
-                   alt.assist_correction_limit_permille);
+                   alt.assist_correction_limit_permille,
+                   alt.freeze_reason,
+                   alt.baro_quality,
+                   alt.sat_hi ? 1U : 0U,
+                   alt.sat_lo ? 1U : 0U,
+                   alt.attitude_scale_permille);
   DebugUart_Printf("control rate_sp_dps r=%d p=%d y=%d gyro_dps r=%d p=%d y=%d\r\n",
                    dbg.rate_setpoint_dps[PID_AXIS_ROLL],
                    dbg.rate_setpoint_dps[PID_AXIS_PITCH],
