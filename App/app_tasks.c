@@ -59,7 +59,7 @@ void App_CreateTasks(void)
 {
   create_task(StabilizerTask, "stabilize", 320U, 5U, 51U);
   create_task(CrsfTask, "crsf", 192U, 6U, 52U);
-  create_task(SafetyTask, "safety", 160U, 4U, 53U);
+  create_task(SafetyTask, "safety", 224U, 4U, 53U);
   create_task(BaroTask, "baro", 192U, 3U, 54U);
   create_task(BatteryTask, "battery", 144U, 2U, 55U);
   create_task(CliTask, "cli", 384U, 1U, 57U);

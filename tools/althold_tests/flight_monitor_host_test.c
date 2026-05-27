@@ -14,29 +14,39 @@ static imu_sample_t s_imu;
 static app_rc_t s_rc;
 static char s_printed[1024];
 static size_t s_printed_len;
+static uint16_t s_battery_get_count;
+static uint16_t s_attitude_get_count;
+static uint16_t s_baro_get_count;
+static uint16_t s_imu_get_count;
+static uint16_t s_rc_get_count;
 
 battery_status_t Topic_GetBattery(void)
 {
+  s_battery_get_count++;
   return s_battery;
 }
 
 attitude_t Topic_GetAttitude(void)
 {
+  s_attitude_get_count++;
   return s_attitude;
 }
 
 baro_sample_t Topic_GetBaro(void)
 {
+  s_baro_get_count++;
   return s_baro;
 }
 
 app_rc_t Topic_GetRc(void)
 {
+  s_rc_get_count++;
   return s_rc;
 }
 
 imu_sample_t Topic_GetImu(void)
 {
+  s_imu_get_count++;
   return s_imu;
 }
 
@@ -75,6 +85,33 @@ static void clear_printed(void)
 {
   memset(s_printed, 0, sizeof(s_printed));
   s_printed_len = 0U;
+}
+
+static void reset_topic_counts(void)
+{
+  s_battery_get_count = 0U;
+  s_attitude_get_count = 0U;
+  s_baro_get_count = 0U;
+  s_imu_get_count = 0U;
+  s_rc_get_count = 0U;
+}
+
+static void test_idle_update_does_not_fetch_sensor_topics(void)
+{
+  flight_status_t status = {0};
+
+  FlightMonitor_Init();
+  reset_topic_counts();
+  status.armed = false;
+  status.uptime_ms = 10U;
+
+  FlightMonitor_Update(&status);
+
+  assert(s_battery_get_count == 0U);
+  assert(s_attitude_get_count == 0U);
+  assert(s_baro_get_count == 0U);
+  assert(s_imu_get_count == 0U);
+  assert(s_rc_get_count == 0U);
 }
 
 static void test_flight_summary_reports_signed_drift_bias(void)
@@ -129,6 +166,7 @@ static void test_flight_summary_reports_signed_drift_bias(void)
 
 int main(void)
 {
+  test_idle_update_does_not_fetch_sensor_topics();
   test_flight_summary_reports_signed_drift_bias();
   puts("flight_monitor_host_test: PASS");
   return 0;

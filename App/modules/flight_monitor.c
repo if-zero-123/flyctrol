@@ -109,11 +109,6 @@ void FlightMonitor_Update(const flight_status_t *status)
     return;
   }
 
-  battery_status_t batt = Topic_GetBattery();
-  attitude_t att = Topic_GetAttitude();
-  baro_sample_t baro = Topic_GetBaro();
-  imu_sample_t imu = Topic_GetImu();
-  app_rc_t rc = Topic_GetRc();
   uint32_t now = status->uptime_ms;
 
   taskENTER_CRITICAL();
@@ -124,6 +119,11 @@ void FlightMonitor_Update(const flight_status_t *status)
 
   if (s_summary.seen && (status->armed || s_prev_armed))
   {
+    battery_status_t batt = Topic_GetBattery();
+    attitude_t att = Topic_GetAttitude();
+    baro_sample_t baro = Topic_GetBaro();
+    imu_sample_t imu = Topic_GetImu();
+    app_rc_t rc = Topic_GetRc();
     uint16_t min_motor = duty_permille(status->motor[0]);
     uint16_t max_motor = min_motor;
     for (uint8_t i = 1U; i < APP_MOTOR_COUNT; i++)
