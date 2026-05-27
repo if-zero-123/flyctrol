@@ -30,7 +30,7 @@ static void test_normal_angle_mode_keeps_full_manual_angle(void)
   assert(fabsf(sp.roll_deg - BOARD_MAX_ANGLE_DEG) < 0.01f);
 }
 
-static void test_baro_mode_uses_smaller_toy_angle_limit(void)
+static void test_baro_mode_keeps_direction_authority_below_normal_limit(void)
 {
   app_rc_t rc = make_rc(1000, 0, true);
   control_setpoint_t sp = {0};
@@ -42,7 +42,19 @@ static void test_baro_mode_uses_smaller_toy_angle_limit(void)
   assert(sp.roll_deg < BOARD_MAX_ANGLE_DEG);
 }
 
-static void test_baro_mode_has_wide_center_deadband(void)
+static void test_baro_mode_half_stick_has_enough_direction_authority(void)
+{
+  app_rc_t rc = make_rc(500, 0, true);
+  control_setpoint_t sp = {0};
+
+  Commander_Reset();
+  Commander_BuildSetpoint(&rc, &sp);
+
+  assert(sp.roll_deg >= 6.0f);
+  assert(sp.roll_deg <= 8.0f);
+}
+
+static void test_baro_mode_has_center_deadband(void)
 {
   app_rc_t rc = make_rc(BOARD_BARO_RC_DEADBAND - 1, -(BOARD_BARO_RC_DEADBAND - 1), true);
   control_setpoint_t sp = {0};
@@ -73,8 +85,9 @@ static void test_baro_mode_slews_roll_pitch_targets_after_centered_entry(void)
 int main(void)
 {
   test_normal_angle_mode_keeps_full_manual_angle();
-  test_baro_mode_uses_smaller_toy_angle_limit();
-  test_baro_mode_has_wide_center_deadband();
+  test_baro_mode_keeps_direction_authority_below_normal_limit();
+  test_baro_mode_half_stick_has_enough_direction_authority();
+  test_baro_mode_has_center_deadband();
   test_baro_mode_slews_roll_pitch_targets_after_centered_entry();
   puts("commander_host_test: PASS");
   return 0;
